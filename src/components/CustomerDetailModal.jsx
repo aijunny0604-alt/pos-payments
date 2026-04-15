@@ -8,7 +8,7 @@ const dateKST = (iso) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export default function CustomerDetailModal({ open, customer, onClose, onBulkPay, onAddPayment, onEditHistory }) {
+export default function CustomerDetailModal({ open, customer, onClose, onBulkPay, onAddPayment, onEditHistory, onQuickPay }) {
   const [tab, setTab] = useState('outstanding'); // outstanding | payments | orders | invoices
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
@@ -142,13 +142,30 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                       <div className="text-base font-bold text-red-400">{fmt(r.balance)}원</div>
                     </div>
                   </div>
-                  {onAddPayment && (
-                    <button
-                      onClick={() => onAddPayment(customer, r)}
-                      className="w-full mt-1 py-1.5 rounded-md bg-[var(--primary)]/15 border border-[var(--primary)]/30 text-[var(--primary)] text-xs font-semibold"
-                    >
-                      + 이 건에 입금
-                    </button>
+                  {/* 빠른 입금 버튼 */}
+                  {onQuickPay && (
+                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                      <button
+                        onClick={() => onQuickPay(r, Number(r.balance))}
+                        className="py-1.5 rounded-md bg-green-500/15 border border-green-500/40 text-green-400 text-[10px] font-bold"
+                      >
+                        ⚡ 잔액 {fmt(r.balance)}
+                      </button>
+                      <button
+                        onClick={() => onQuickPay(r, Math.floor(Number(r.balance) / 2 / 10000) * 10000 || Number(r.balance))}
+                        className="py-1.5 rounded-md bg-blue-500/15 border border-blue-500/40 text-blue-400 text-[10px] font-bold"
+                      >
+                        ½ {fmt(Math.floor(Number(r.balance) / 2 / 10000) * 10000 || Number(r.balance))}
+                      </button>
+                      {onAddPayment && (
+                        <button
+                          onClick={() => onAddPayment(customer, r)}
+                          className="py-1.5 rounded-md bg-[var(--secondary)] border border-[var(--border)] text-[var(--muted-foreground)] text-[10px] font-bold"
+                        >
+                          ✏️ 직접
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

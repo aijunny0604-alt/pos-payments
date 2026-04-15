@@ -19,12 +19,14 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
   const [newInvoiceNumber, setNewInvoiceNumber] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
 
-  // 입금 정보
+  // 입금/출금 정보
+  const [type, setType] = useState('income'); // income | expense
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('계좌이체');
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [autoNumber, setAutoNumber] = useState(true);
 
   const resetForm = () => {
     setMode('existing');
@@ -33,7 +35,9 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
     setRecordId(initialRecordId ? String(initialRecordId) : '');
     setNewTotal(''); setNewOrderId(''); setNewInvoiceNumber(''); setNewDueDate('');
     setNewInvoiceDate(todayISO());
+    setType('income');
     setAmount(''); setMethod('계좌이체'); setMemo(''); setError('');
+    setAutoNumber(true);
   };
 
   useEffect(() => {
@@ -76,12 +80,16 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
       if (mode === 'new') {
         const totalNum = Number(newTotal);
         if (!totalNum || totalNum <= 0) { setError('총액을 입력하세요'); setSubmitting(false); return; }
+        let invoiceNum = newInvoiceNumber || null;
+        if (autoNumber && !invoiceNum) {
+          invoiceNum = await supabase.nextInvoiceNumber();
+        }
         const newRec = await supabase.addPaymentRecord({
-          order_id: newOrderId ? Number(newOrderId) : null,
-          customer_id: Number(customerId),
+          order_id: newOrderId || null,
+          customer_id: customerId,
           total_amount: totalNum,
           invoice_date: newInvoiceDate || null,
-          invoice_number: newInvoiceNumber || null,
+          invoice_number: invoiceNum,
           due_date: newDueDate || null,
         });
         if (!newRec || !newRec[0]) { setError('결제 레코드 생성 실패'); setSubmitting(false); return; }
@@ -95,6 +103,7 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
         amount: amountNum,
         method,
         memo: memo || null,
+        type,
       });
       if (!saved) { setError('입금 저장 실패'); setSubmitting(false); return; }
 
@@ -120,12 +129,31 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
         style={{ WebkitOverflowScrolling: 'touch' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-[var(--card)]">
-          <h3 className="text-base font-bold flex items-center gap-2">
-            <span>💵</span>
-            <span>입금 등록</span>
-          </h3>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--secondary)]" aria-label="닫기">✕</button>
+        <div className="p-4 border-b border-[var(--border)] sticky top-0 bg-[var(--card)] z-10">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-bold flex items-center gap-2">
+              <span>{type === 'income' ? '💵' : '💸'}</span>
+              <span>{type === 'income' ? '입금 등록' : '출금 등록'}</span>
+            </h3>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--secondary)]" aria-label="닫기">✕</button>
+          </div>
+          {/* Income/Expense Toggle */}
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-[var(--secondary)]">
+            <button
+              type="button"
+              onClick={() => setType('income')}
+              className={`py-1.5 rounded-md text-xs font-bold transition-colors ${type === 'income' ? 'bg-green-500 text-white shadow' : 'text-[var(--muted-foreground)]'}`}
+            >
+              💵 입금 (받은 돈)
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('expense')}
+              className={`py-1.5 rounded-md text-xs font-bold transition-colors ${type === 'expense' ? 'bg-red-500 text-white shadow' : 'text-[var(--muted-foreground)]'}`}
+            >
+              💸 출금 (환불/비용)
+            </button>
+          </div>
         </div>
 
         <div className="p-4 space-y-3">
@@ -188,7 +216,18 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="세금계산서 번호">
-                  <input value={newInvoiceNumber} onChange={(e) => setNewInvoiceNumber(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm" style={{ fontSize: '16px' }} placeholder="INV-xxx" />
+                  <input
+                    value={newInvoiceNumber}
+                    onChange={(e) => { setNewInvoiceNumber(e.target.value); if (e.target.value) setAutoNumber(false); }}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm disabled:opacity-50"
+                    style={{ fontSize: '16px' }}
+                    placeholder={autoNumber ? '저장 시 자동 채번' : 'INV-xxx'}
+                    disabled={autoNumber}
+                  />
+                  <label className="mt-1 flex items-center gap-1 text-[10px] text-[var(--muted-foreground)] cursor-pointer">
+                    <input type="checkbox" checked={autoNumber} onChange={(e) => setAutoNumber(e.target.checked)} className="w-3 h-3" />
+                    자동 채번
+                  </label>
                 </Field>
                 <Field label="발행일">
                   <input type="date" value={newInvoiceDate} onChange={(e) => setNewInvoiceDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm" style={{ fontSize: '16px' }} />

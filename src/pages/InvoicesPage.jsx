@@ -12,7 +12,12 @@ export default function InvoicesPage({ customers }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState('');
+  const [settings, setSettings] = useState(null);
   const invoiceRef = useRef(null);
+
+  useEffect(() => {
+    supabase.getSettings().then(setSettings);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -127,8 +132,11 @@ export default function InvoicesPage({ customers }) {
           style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
         >
           <header className="border-b-2 border-black pb-3 mb-3">
-            <h1 className="text-xl font-bold">MOVE MOTORS</h1>
-            <p className="text-xs text-gray-600 mt-0.5">
+            <h1 className="text-xl font-bold">{settings?.company_name || 'MOVE MOTORS'}</h1>
+            {settings?.business_number && <p className="text-[10px] text-gray-600">사업자: {settings.business_number}</p>}
+            {settings?.company_phone && <p className="text-[10px] text-gray-600">{settings.company_phone}</p>}
+            {settings?.company_address && <p className="text-[10px] text-gray-600 break-keep">{settings.company_address}</p>}
+            <p className="text-xs text-gray-600 mt-2">
               {customerId === 'all' ? `${date} 발송 내역 — 전체 업체` : `${customerName(customerId)} 귀하`}
             </p>
             <p className="text-xs text-gray-600">발행일: {date}</p>
@@ -169,8 +177,9 @@ export default function InvoicesPage({ customers }) {
               </section>
 
               <footer className="mt-4 pt-3 border-t border-gray-300 text-xs text-gray-600 space-y-0.5">
-                <p>입금 계좌: (계좌번호를 여기에 입력)</p>
-                <p>문의: MOVE MOTORS</p>
+                {settings?.bank_account && <p className="font-semibold">💳 입금 계좌: {settings.bank_account}</p>}
+                {settings?.invoice_footer && <p className="break-keep">{settings.invoice_footer}</p>}
+                <p>문의: {settings?.company_name || 'MOVE MOTORS'} {settings?.company_phone && `· ${settings.company_phone}`}</p>
               </footer>
             </>
           )}

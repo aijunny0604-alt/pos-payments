@@ -8,11 +8,13 @@ import PaymentsPage from '@/pages/PaymentsPage';
 import CustomersPage from '@/pages/CustomersPage';
 import InvoicesPage from '@/pages/InvoicesPage';
 import SettingsPage from '@/pages/SettingsPage';
+import AuthPage, { checkAuth } from '@/pages/AuthPage';
 
 import PaymentRegisterModal from '@/components/PaymentRegisterModal';
 import CustomerDetailModal from '@/components/CustomerDetailModal';
 import BulkPaymentModal from '@/components/BulkPaymentModal';
 import PaymentEditModal from '@/components/PaymentEditModal';
+import { AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
   // 라우팅
@@ -42,6 +44,20 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+
+  // 인증
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const settings = await supabase.getSettings();
+      const ok = await checkAuth(settings);
+      setAuthed(ok);
+      setAuthChecked(true);
+    })();
+  }, []);
 
   // 라우팅: hash 변경 시 동기화
   useEffect(() => {
@@ -147,6 +163,32 @@ export default function App() {
     }
   };
 
+  // 빠른 입금 (one-tap)
+  const handleQuickPay = async (record, amount) => {
+    if (!record || !amount || amount <= 0) return;
+    if (!confirm(`${record.invoice_number || `#${record.id}`}\n잔금: ${record.balance.toLocaleString()}원\n\n${amount.toLocaleString()}원 입금 등록하시겠습니까?`)) return;
+    try {
+      await supabase.addPaymentHistory({
+        payment_record_id: record.id,
+        amount,
+        method: '계좌이체',
+        memo: '빠른 입금',
+        type: 'income',
+      });
+      await load();
+    } catch (e) {
+      alert('빠른 입금 실패: ' + e.message);
+    }
+  };
+
+  // 인증 미통과 시 로그인 페이지
+  if (!authChecked) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-[var(--muted-foreground)]">로딩 중...</div>;
+  }
+  if (!authed) {
+    return <AuthPage onAuthed={() => setAuthed(true)} />;
+  }
+
   return (
     <AppLayout
       currentPage={currentPage}
@@ -156,6 +198,31 @@ export default function App() {
       outstanding={outstanding}
       overdueCount={overdue.length}
     >
+      {/* 연체 알림 배너 */}
+      {overdue.length > 0 && !alertDismissed && currentPage === 'dashboard' && (
+        <div className="mb-4 p-3 rounded-xl border border-red-500/40 bg-red-500/10 flex items-start gap-2 max-w-4xl mx-auto">
+          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-red-300">⚠️ 연체 주문 {overdue.length}건</p>
+            <p className="text-xs text-red-300/80 mt-0.5 break-keep">
+              납기일 지난 미수 — 빠른 수금 또는 명세서 송부 권장
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('payments')}
+            className="text-[10px] px-2.5 py-1 rounded-md bg-red-500 text-white font-bold flex-shrink-0"
+          >
+            확인
+          </button>
+          <button
+            onClick={() => setAlertDismissed(true)}
+            className="text-[var(--muted-foreground)] flex-shrink-0"
+            aria-label="닫기"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {currentPage === 'dashboard' && (
         <DashboardPage
           todayPaid={todayPaid}
@@ -221,6 +288,7 @@ export default function App() {
           setPaymentModal({ open: true, customerId: customer?.id || null, recordId: record?.id || null });
         }}
         onEditHistory={(h) => setEditModal(h)}
+        onQuickPay={handleQuickPay}
       />
 
       <BulkPaymentModal

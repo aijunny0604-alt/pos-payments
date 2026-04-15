@@ -347,6 +347,33 @@ export const supabase = {
       );
     } catch (e) { console.error('getOverdueRecords:', e); return []; }
   },
+  // ===== 앱 설정 (회사 정보) =====
+  async getSettings() {
+    try {
+      const r = await fetchJSON(`${SUPABASE_URL}/rest/v1/app_settings?id=eq.1`, { headers });
+      return r[0] || null;
+    } catch (e) { console.error('getSettings:', e); return null; }
+  },
+  async updateSettings(patch) {
+    try {
+      const r = await fetchJSON(`${SUPABASE_URL}/rest/v1/app_settings?id=eq.1`, {
+        method: 'PATCH', headers: headersWithReturn,
+        body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+      });
+      return r[0] || null;
+    } catch (e) { console.error('updateSettings:', e); return null; }
+  },
+  async nextInvoiceNumber() {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/next_invoice_number`, {
+        method: 'POST', headers: headersWithReturn, body: JSON.stringify({}),
+      });
+      if (!r.ok) return null;
+      const text = await r.text();
+      return text.replace(/^"|"$/g, '');
+    } catch (e) { console.error('nextInvoiceNumber:', e); return null; }
+  },
+
   async getRecentPayments(limit = 10) {
     try {
       return await fetchJSON(
