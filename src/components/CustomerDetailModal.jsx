@@ -23,18 +23,32 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
     if (!open || !customer) return;
     setLoading(true);
     setTab('outstanding');
-    Promise.all([
-      supabase.getPaymentRecords({ customerId: customer.id }),
-      supabase.getPaymentHistory({}).then(async (all) => {
-        const recordIds = (await supabase.getPaymentRecords({ customerId: customer.id })).map((r) => r.id);
-        return all.filter((h) => recordIds.includes(h.payment_record_id));
-      }),
-      supabase.getOrders().then((o) => o.filter((x) => x.customer_id === customer.id)),
-    ]).then(([r, h, o]) => {
-      setRecords(r);
-      setHistory(h);
-      setOrders(o);
-    }).finally(() => setLoading(false));
+    (async () => {
+      try {
+        const [r, allHistory, allOrders] = await Promise.all([
+          supabase.getPaymentRecords({ customerId: customer.id }),
+          supabase.getPaymentHistory({}),
+          supabase.getOrders(),
+        ]);
+        const recordIds = new Set(r.map((x) => x.id));
+        const myHistory = allHistory.filter((h) => recordIds.has(h.payment_record_id));
+
+        // 주문 매칭: 1) record.order_id 우선  2) name/phone 백업
+        const orderIdSet = new Set(r.map((x) => x.order_id).filter(Boolean));
+        const targetName = (customer.name || '').trim();
+        const targetPhone = (customer.phone || '').trim();
+        const myOrders = allOrders.filter((o) => {
+          if (orderIdSet.has(o.id)) return true;
+          if (targetName && (o.customer_name || '').trim() === targetName) return true;
+          if (targetPhone && (o.customer_phone || '').trim() === targetPhone) return true;
+          return false;
+        });
+
+        setRecords(r);
+        setHistory(myHistory);
+        setOrders(myOrders);
+      } finally { setLoading(false); }
+    })();
   }, [open, customer]);
 
   const outstandingRecords = useMemo(() => records.filter((r) => Number(r.balance) > 0), [records]);
@@ -230,25 +244,19 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                   </div>
                   {/* 빠른 입금 버튼 */}
                   {onQuickPay && (
-                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                    <div className="mt-1.5 grid grid-cols-2 gap-1">
                       <button
                         onClick={() => onQuickPay(r, Number(r.balance))}
                         className="py-1.5 rounded-md bg-green-500/15 border border-green-500/40 text-green-400 text-[10px] font-bold"
                       >
-                        ⚡ 잔액 {fmt(r.balance)}
-                      </button>
-                      <button
-                        onClick={() => onQuickPay(r, Math.floor(Number(r.balance) / 2 / 10000) * 10000 || Number(r.balance))}
-                        className="py-1.5 rounded-md bg-blue-500/15 border border-blue-500/40 text-blue-400 text-[10px] font-bold"
-                      >
-                        ½ {fmt(Math.floor(Number(r.balance) / 2 / 10000) * 10000 || Number(r.balance))}
+                        ⚡ 잔액 전액 {fmt(r.balance)}
                       </button>
                       {onAddPayment && (
                         <button
                           onClick={() => onAddPayment(customer, r)}
                           className="py-1.5 rounded-md bg-[var(--secondary)] border border-[var(--border)] text-[var(--muted-foreground)] text-[10px] font-bold"
                         >
-                          ✏️ 직접
+                          ✏️ 직접 입력
                         </button>
                       )}
                     </div>

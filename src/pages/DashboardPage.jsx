@@ -8,10 +8,16 @@ const dateKST = (iso) => {
 };
 
 export default function DashboardPage({
-  todayPaid, outstanding, overdue, recent, customerRanking, customers,
+  todayPaid, outstanding, overdue, recent, customerRanking, customers, records = [],
   onOpenCustomer, onOpenPayment,
 }) {
   const customerName = (id) => customers.find((c) => c.id === id)?.name || `#${id}`;
+  const recordById = (id) => records.find((r) => r.id === id);
+  const customerById = (id) => customers.find((c) => c.id === id);
+  const customerBalance = (id) => {
+    const r = customerRanking.find((x) => x.customer.id === id);
+    return r?.balance || 0;
+  };
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
@@ -110,20 +116,42 @@ export default function DashboardPage({
 
       {/* 최근 입금 (전체 너비) */}
       <Panel title="💵 최근 입금" emptyMessage="입금 내역 없음">
-        {recent.length > 0 && recent.map((p) => (
-          <div key={p.id} className="p-2.5 rounded-lg bg-[var(--secondary)] text-sm flex items-start gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold">{fmt(p.amount)}원</div>
-              <div className="text-[11px] text-[var(--muted-foreground)] flex items-center gap-1.5 flex-wrap">
-                {p.method && <span>{p.method}</span>}
-                {p.memo && <span className="break-words">· {p.memo}</span>}
+        {recent.length > 0 && recent.map((p) => {
+          const rec = recordById(p.payment_record_id);
+          const cust = rec && customerById(rec.customer_id);
+          const remaining = rec ? customerBalance(rec.customer_id) : 0;
+          return (
+            <button
+              key={p.id}
+              onClick={() => cust && onOpenCustomer(cust)}
+              className="w-full p-2.5 rounded-lg bg-[var(--secondary)] hover:bg-[var(--accent)] text-sm flex items-start gap-2 text-left transition-colors"
+              disabled={!cust}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`font-bold text-base ${p.type === 'expense' ? 'text-red-400' : 'text-green-400'}`}>
+                    {p.type === 'expense' ? '-' : '+'}{fmt(p.amount)}원
+                  </span>
+                  {cust && <span className="font-semibold text-[var(--foreground)] break-keep">→ {cust.name}</span>}
+                </div>
+                <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  {p.method && <span>{p.method}</span>}
+                  {rec?.invoice_number && <span>· #{rec.invoice_number}</span>}
+                  {p.memo && <span className="break-words">· {p.memo}</span>}
+                </div>
               </div>
-            </div>
-            <div className="text-[10px] text-[var(--muted-foreground)] flex-shrink-0 whitespace-nowrap">
-              {dateKST(p.paid_at)}
-            </div>
-          </div>
-        ))}
+              <div className="text-right flex-shrink-0">
+                <div className="text-[10px] text-[var(--muted-foreground)] whitespace-nowrap">{dateKST(p.paid_at)}</div>
+                {cust && (
+                  <div className="text-[10px] mt-0.5">
+                    <span className="text-[var(--muted-foreground)]">잔 </span>
+                    <span className={`font-bold ${remaining > 0 ? 'text-red-400' : 'text-green-400'}`}>{fmt(remaining)}</span>
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </Panel>
     </div>
   );

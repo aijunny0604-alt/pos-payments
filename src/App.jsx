@@ -31,6 +31,7 @@ export default function App() {
   const [overdue, setOverdue] = useState([]);
   const [recent, setRecent] = useState([]);
   const [recordsCount, setRecordsCount] = useState(0);
+  const [allRecords, setAllRecords] = useState([]);
   const [customerRanking, setCustomerRanking] = useState([]);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -93,6 +94,7 @@ export default function App() {
       setOverdue(od);
       setRecent(rp);
       setRecordsCount(allRecords.length);
+      setAllRecords(allRecords);
 
       // 업체별 미수 랭킹
       const byCustomer = new Map();
@@ -231,6 +233,7 @@ export default function App() {
           recent={recent}
           customerRanking={customerRanking}
           customers={customers}
+          records={allRecords}
           onOpenCustomer={(c) => setCustomerModal(c)}
           onOpenPayment={() => setPaymentModal({ open: true, customerId: null, recordId: null })}
         />

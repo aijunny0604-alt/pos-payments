@@ -177,10 +177,16 @@ export async function exportCustomerReport({ customer, records, history, setting
   styleHeader(s2.getRow(1), 'FFD1FAE5');
 
   // 시트 4: 주문 품목 상세
-  const myOrders = orders.filter((o) =>
-    (o.customer_name || '').trim() === (customer.name || '').trim() ||
-    (o.customer_phone || '').trim() === (customer.phone || '').trim()
-  );
+  // 매칭: record.order_id 우선, 그 다음 name/phone
+  const orderIdSet = new Set(myRecords.map((r) => r.order_id).filter(Boolean));
+  const targetName = (customer.name || '').trim();
+  const targetPhone = (customer.phone || '').trim();
+  const myOrders = orders.filter((o) => {
+    if (orderIdSet.has(o.id)) return true;
+    if (targetName && (o.customer_name || '').trim() === targetName) return true;
+    if (targetPhone && (o.customer_phone || '').trim() === targetPhone) return true;
+    return false;
+  });
   const s4 = wb.addWorksheet('주문 품목 상세');
   s4.columns = [
     { header: '주문일', key: 'order_date', width: 16 },
