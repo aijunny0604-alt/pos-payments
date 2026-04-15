@@ -7,10 +7,11 @@ dist/
 # Agent memory
 .claude/
 
-# Test screenshots
-*.png
+# Test screenshots (exclude public/ assets)
+/*.png
 screenshots/
 test-screenshots/
+!public/*.png
 
 # Playwright CLI
 .playwright-cli/
