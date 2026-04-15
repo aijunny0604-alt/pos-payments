@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { calcVat, DEFAULT_CATEGORIES, getCategoryInfo } from '@/lib/vatHelper';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -13,11 +14,21 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
   const [recordsLoading, setRecordsLoading] = useState(false);
 
   // 신규 레코드 입력
-  const [newTotal, setNewTotal] = useState('');
+  const [newCategory, setNewCategory] = useState('sales');
+  const [newSupply, setNewSupply] = useState('');
+  const [newVatExempt, setNewVatExempt] = useState(false);
   const [newOrderId, setNewOrderId] = useState('');
   const [newInvoiceDate, setNewInvoiceDate] = useState(todayISO());
   const [newInvoiceNumber, setNewInvoiceNumber] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [vatRate, setVatRate] = useState(10);
+
+  // 자동 계산 (공급가액 입력 → 부가세 + 합계)
+  const calc = useMemo(
+    () => calcVat({ supply: newSupply, vatRate, isExempt: newVatExempt }),
+    [newSupply, vatRate, newVatExempt]
+  );
 
   // 입금/출금 정보
   const [type, setType] = useState('income'); // income | expense
@@ -33,7 +44,8 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
     setCustomerId(initialCustomerId ? String(initialCustomerId) : '');
     setRecords([]);
     setRecordId(initialRecordId ? String(initialRecordId) : '');
-    setNewTotal(''); setNewOrderId(''); setNewInvoiceNumber(''); setNewDueDate('');
+    setNewCategory('sales'); setNewSupply(''); setNewVatExempt(false);
+    setNewOrderId(''); setNewInvoiceNumber(''); setNewDueDate('');
     setNewInvoiceDate(todayISO());
     setType('income');
     setAmount(''); setMethod('계좌이체'); setMemo(''); setError('');
@@ -43,9 +55,19 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
   useEffect(() => {
     if (!open) return;
     resetForm();
-    supabase.getCustomers().then(setCustomers).catch(() => setCustomers([]));
+    Promise.all([supabase.getCustomers(), supabase.getSettings()]).then(([cs, st]) => {
+      setCustomers(cs);
+      if (st?.expense_categories) setCategories(st.expense_categories);
+      if (st?.default_vat_rate) setVatRate(Number(st.default_vat_rate));
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialCustomerId, initialRecordId]);
+
+  // 카테고리 변경 시 자동으로 비과세 토글
+  useEffect(() => {
+    const cat = getCategoryInfo(categories, newCategory);
+    setNewVatExempt(cat.vat_exempt);
+  }, [newCategory, categories]);
 
   useEffect(() => {
     if (!customerId || mode !== 'existing') { setRecords([]); return; }
@@ -78,8 +100,8 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
       let targetRecordId = recordId;
 
       if (mode === 'new') {
-        const totalNum = Number(newTotal);
-        if (!totalNum || totalNum <= 0) { setError('총액을 입력하세요'); setSubmitting(false); return; }
+        const supply = Number(newSupply);
+        if (!supply || supply <= 0) { setError('공급가액을 입력하세요'); setSubmitting(false); return; }
         let invoiceNum = newInvoiceNumber || null;
         if (autoNumber && !invoiceNum) {
           invoiceNum = await supabase.nextInvoiceNumber();
@@ -87,7 +109,11 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
         const newRec = await supabase.addPaymentRecord({
           order_id: newOrderId || null,
           customer_id: customerId,
-          total_amount: totalNum,
+          total_amount: calc.total,
+          supply_amount: calc.supply,
+          vat_amount: calc.vat,
+          is_vat_exempt: newVatExempt,
+          category: newCategory,
           invoice_date: newInvoiceDate || null,
           invoice_number: invoiceNum,
           due_date: newDueDate || null,
@@ -211,9 +237,60 @@ export default function PaymentRegisterModal({ open, onClose, onSaved, initialCu
           {/* 신규 모드: 결제 레코드 생성 필드 */}
           {mode === 'new' && (
             <>
-              <Field label="총액 (세금계산서 금액)" required>
-                <NumberInput value={newTotal} onChange={setNewTotal} placeholder="1000000" />
+              {/* 카테고리 */}
+              <Field label="카테고리" required>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1">
+                  {categories.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setNewCategory(c.key)}
+                      className={`flex flex-col items-center justify-center py-2 rounded-lg border text-[10px] font-semibold ${
+                        newCategory === c.key
+                          ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                          : 'bg-[var(--secondary)] border-[var(--border)] text-[var(--muted-foreground)]'
+                      }`}
+                    >
+                      <span className="text-sm">{c.icon}</span>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
               </Field>
+
+              {/* 공급가액 + 부가세 */}
+              <Field label={`공급가액 ${newVatExempt ? '(비과세)' : `(부가세 ${vatRate}% 자동)`}`} required>
+                <NumberInput value={newSupply} onChange={setNewSupply} placeholder="1000000" />
+                <label className="mt-1.5 flex items-center gap-1.5 text-[11px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newVatExempt}
+                    onChange={(e) => setNewVatExempt(e.target.checked)}
+                    className="w-3.5 h-3.5"
+                  />
+                  <span className="text-[var(--muted-foreground)]">비과세 (부가세 없음)</span>
+                </label>
+              </Field>
+
+              {/* 자동 계산 미리보기 */}
+              {Number(newSupply) > 0 && (
+                <div className="p-2.5 rounded-lg bg-[var(--secondary)] grid grid-cols-3 gap-2 text-center text-xs">
+                  <div>
+                    <div className="text-[10px] text-[var(--muted-foreground)]">공급가액</div>
+                    <div className="font-bold">{fmt(calc.supply)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[var(--muted-foreground)]">부가세</div>
+                    <div className={`font-bold ${newVatExempt ? 'text-[var(--muted-foreground)]' : 'text-orange-400'}`}>
+                      {newVatExempt ? '면제' : fmt(calc.vat)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[var(--muted-foreground)]">합계</div>
+                    <div className="font-bold text-[var(--primary)]">{fmt(calc.total)}</div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Field label="세금계산서 번호">
                   <input

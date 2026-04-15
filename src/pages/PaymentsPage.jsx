@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { exportFilteredExcel } from '@/lib/exportExcel';
+import { DEFAULT_CATEGORIES, getCategoryInfo } from '@/lib/vatHelper';
 import { Search, Plus, Edit2, FileSpreadsheet, ChevronRight, FileCheck, FileX } from 'lucide-react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
@@ -17,10 +18,14 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
   const [loading, setLoading] = useState(true);
 
   // 필터
-  const [statusFilter, setStatusFilter] = useState('all'); // all | unpaid | partial | paid
-  const [issuedFilter, setIssuedFilter] = useState('all'); // all | issued | notIssued
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [issuedFilter, setIssuedFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('all');
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+
+  useEffect(() => { supabase.getSettings().then((s) => { if (s?.expense_categories) setCategories(s.expense_categories); }); }, []);
 
   const reload = () => {
     setLoading(true);
@@ -51,6 +56,7 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
     if (statusFilter !== 'all') list = list.filter((r) => r.payment_status === statusFilter);
     if (issuedFilter === 'issued') list = list.filter((r) => r.invoice_issued === true);
     if (issuedFilter === 'notIssued') list = list.filter((r) => r.invoice_issued !== true);
+    if (categoryFilter !== 'all') list = list.filter((r) => (r.category || 'sales') === categoryFilter);
     if (customerFilter !== 'all') list = list.filter((r) => String(r.customer_id) === String(customerFilter));
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -61,7 +67,7 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
       );
     }
     return list;
-  }, [records, statusFilter, issuedFilter, customerFilter, search, customers]);
+  }, [records, statusFilter, issuedFilter, categoryFilter, customerFilter, search, customers]);
 
   const filteredHistory = useMemo(() => {
     let list = history;
@@ -154,24 +160,30 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
 
           {/* 세금계산서 발행 필터 */}
           <div className="flex gap-1.5 flex-wrap">
-            <FilterChip
-              active={issuedFilter === 'all'}
-              onClick={() => setIssuedFilter('all')}
-              color="gray"
-              icon={null}
-            >📄 발행 전체</FilterChip>
-            <FilterChip
-              active={issuedFilter === 'issued'}
-              onClick={() => setIssuedFilter('issued')}
-              color="green"
-              icon={FileCheck}
-            >발행 완료</FilterChip>
-            <FilterChip
-              active={issuedFilter === 'notIssued'}
-              onClick={() => setIssuedFilter('notIssued')}
-              color="orange"
-              icon={FileX}
-            >미발행</FilterChip>
+            <FilterChip active={issuedFilter === 'all'} onClick={() => setIssuedFilter('all')} color="gray" icon={null}>📄 발행 전체</FilterChip>
+            <FilterChip active={issuedFilter === 'issued'} onClick={() => setIssuedFilter('issued')} color="green" icon={FileCheck}>발행 완료</FilterChip>
+            <FilterChip active={issuedFilter === 'notIssued'} onClick={() => setIssuedFilter('notIssued')} color="orange" icon={FileX}>미발행</FilterChip>
+          </div>
+
+          {/* 카테고리 필터 */}
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className={`px-2.5 py-1 text-[11px] rounded-md border font-semibold ${
+                categoryFilter === 'all' ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'bg-[var(--secondary)] border-[var(--border)] text-[var(--muted-foreground)]'
+              }`}
+            >전체</button>
+            {categories.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => setCategoryFilter(c.key)}
+                className={`px-2.5 py-1 text-[11px] rounded-md border font-semibold flex items-center gap-1 ${
+                  categoryFilter === c.key ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'bg-[var(--secondary)] border-[var(--border)] text-[var(--muted-foreground)]'
+                }`}
+              >
+                {c.icon} {c.label}
+              </button>
+            ))}
           </div>
 
           {/* 요약 */}
@@ -253,8 +265,18 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
                   </div>
                 </div>
                 <div className="flex items-end justify-between gap-2 pt-1.5 border-t border-[var(--border)]">
-                  <div className="text-[11px] text-[var(--muted-foreground)]">
-                    총 {fmt(r.total_amount)} / 입금 {fmt(r.paid_amount)}
+                  <div className="text-[11px] text-[var(--muted-foreground)] flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--background)] border border-[var(--border)]">
+                        {getCategoryInfo(categories, r.category).icon} {getCategoryInfo(categories, r.category).label}
+                      </span>
+                      {r.is_vat_exempt ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">비과세</span>
+                      ) : Number(r.vat_amount) > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300">+VAT {fmt(r.vat_amount)}</span>
+                      )}
+                    </div>
+                    <span>총 {fmt(r.total_amount)} / 입금 {fmt(r.paid_amount)}</span>
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] text-[var(--muted-foreground)]">잔금</div>
