@@ -135,6 +135,7 @@ export async function exportCustomerReport({ customer, records, history, setting
     { header: '입금', key: 'paid_amount', width: 14, style: { numFmt: '#,##0' } },
     { header: '잔금', key: 'balance', width: 14, style: { numFmt: '#,##0' } },
     { header: '상태', key: 'payment_status', width: 8 },
+    { header: '세금계산서', key: 'invoice_status', width: 10 },
   ];
   myRecords.filter((r) => Number(r.balance) > 0).forEach((r) => s1.addRow({
     ...r,
@@ -142,6 +143,7 @@ export async function exportCustomerReport({ customer, records, history, setting
     paid_amount: fmt(r.paid_amount),
     balance: fmt(r.balance),
     payment_status: r.payment_status === 'partial' ? '부분' : '미수',
+    invoice_status: r.invoice_issued ? '✅ 발행' : '⏳ 미발행',
   }));
   styleHeader(s1.getRow(1), 'FFFECACA');
 
@@ -218,6 +220,7 @@ export async function exportCustomerReport({ customer, records, history, setting
     { header: '입금', key: 'paid_amount', width: 14, style: { numFmt: '#,##0' } },
     { header: '잔금', key: 'balance', width: 14, style: { numFmt: '#,##0' } },
     { header: '상태', key: 'payment_status', width: 8 },
+    { header: '세금계산서', key: 'invoice_status', width: 10 },
     { header: '생성일', key: 'created_at', width: 18 },
   ];
   myRecords.forEach((r) => s3.addRow({
@@ -226,6 +229,7 @@ export async function exportCustomerReport({ customer, records, history, setting
     paid_amount: fmt(r.paid_amount),
     balance: fmt(r.balance),
     payment_status: r.payment_status === 'paid' ? '완납' : r.payment_status === 'partial' ? '부분' : '미수',
+    invoice_status: r.invoice_issued ? '✅ 발행' : '⏳ 미발행',
   }));
   styleHeader(s3.getRow(1), 'FFE0E7FF');
 
@@ -253,6 +257,7 @@ export async function exportFilteredExcel({ records, history, customers, label =
     { header: '입금', key: 'paid_amount', width: 14, style: { numFmt: '#,##0' } },
     { header: '잔금', key: 'balance', width: 14, style: { numFmt: '#,##0' } },
     { header: '상태', key: 'payment_status', width: 8 },
+    { header: '세금계산서', key: 'invoice_status', width: 10 },
   ];
   records.forEach((r) => s1.addRow({
     ...r,
@@ -261,6 +266,7 @@ export async function exportFilteredExcel({ records, history, customers, label =
     paid_amount: fmt(r.paid_amount),
     balance: fmt(r.balance),
     payment_status: r.payment_status === 'paid' ? '완납' : r.payment_status === 'partial' ? '부분' : '미수',
+    invoice_status: r.invoice_issued ? '✅ 발행' : '⏳ 미발행',
   }));
   styleHeader(s1.getRow(1), 'FFE0E7FF');
 

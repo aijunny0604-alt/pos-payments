@@ -194,11 +194,30 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                         {r.order_id && <>주문 #{r.order_id}</>}
                       </div>
                     </div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                      r.payment_status === 'partial' ? 'bg-orange-500/20 text-orange-300' : 'bg-red-500/20 text-red-300'
-                    }`}>
-                      {r.payment_status === 'partial' ? '부분' : '미수'}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        r.payment_status === 'partial' ? 'bg-orange-500/20 text-orange-300' : 'bg-red-500/20 text-red-300'
+                      }`}>
+                        {r.payment_status === 'partial' ? '부분' : '미수'}
+                      </span>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newVal = !r.invoice_issued;
+                          await supabase.updatePaymentRecord(r.id, {
+                            invoice_issued: newVal,
+                            invoice_issued_at: newVal ? new Date().toISOString() : null,
+                          });
+                          setRecords((prev) => prev.map((x) => x.id === r.id ? { ...x, invoice_issued: newVal } : x));
+                        }}
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          r.invoice_issued ? 'bg-green-500/20 text-green-300' : 'bg-orange-500/15 text-orange-300'
+                        }`}
+                        title="세금계산서 발행 토글"
+                      >
+                        {r.invoice_issued ? '✅ 발행' : '⏳ 미발행'}
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-end justify-between gap-2 pt-1 border-t border-[var(--border)]">
                     <div className="text-[11px] text-[var(--muted-foreground)]">

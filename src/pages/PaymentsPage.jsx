@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { exportFilteredExcel } from '@/lib/exportExcel';
-import { Search, Plus, Edit2, FileSpreadsheet, ChevronRight } from 'lucide-react';
+import { Search, Plus, Edit2, FileSpreadsheet, ChevronRight, FileCheck, FileX } from 'lucide-react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -18,22 +18,39 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
 
   // 필터
   const [statusFilter, setStatusFilter] = useState('all'); // all | unpaid | partial | paid
+  const [issuedFilter, setIssuedFilter] = useState('all'); // all | issued | notIssued
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('all');
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true);
     Promise.all([
       supabase.getPaymentRecords({}),
       supabase.getPaymentHistory({ limit: 200 }),
     ]).then(([r, h]) => { setRecords(r); setHistory(h); }).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const toggleIssued = async (record, e) => {
+    e.stopPropagation();
+    const newVal = !record.invoice_issued;
+    const updated = await supabase.updatePaymentRecord(record.id, {
+      invoice_issued: newVal,
+      invoice_issued_at: newVal ? new Date().toISOString() : null,
+    });
+    if (updated) {
+      setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, ...updated } : r));
+    }
+  };
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || `#${id}`;
 
   const filteredRecords = useMemo(() => {
     let list = records;
     if (statusFilter !== 'all') list = list.filter((r) => r.payment_status === statusFilter);
+    if (issuedFilter === 'issued') list = list.filter((r) => r.invoice_issued === true);
+    if (issuedFilter === 'notIssued') list = list.filter((r) => r.invoice_issued !== true);
     if (customerFilter !== 'all') list = list.filter((r) => String(r.customer_id) === String(customerFilter));
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -44,7 +61,7 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
       );
     }
     return list;
-  }, [records, statusFilter, customerFilter, search, customers]);
+  }, [records, statusFilter, issuedFilter, customerFilter, search, customers]);
 
   const filteredHistory = useMemo(() => {
     let list = history;
@@ -135,6 +152,28 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
             ))}
           </div>
 
+          {/* 세금계산서 발행 필터 */}
+          <div className="flex gap-1.5 flex-wrap">
+            <FilterChip
+              active={issuedFilter === 'all'}
+              onClick={() => setIssuedFilter('all')}
+              color="gray"
+              icon={null}
+            >📄 발행 전체</FilterChip>
+            <FilterChip
+              active={issuedFilter === 'issued'}
+              onClick={() => setIssuedFilter('issued')}
+              color="green"
+              icon={FileCheck}
+            >발행 완료</FilterChip>
+            <FilterChip
+              active={issuedFilter === 'notIssued'}
+              onClick={() => setIssuedFilter('notIssued')}
+              color="orange"
+              icon={FileX}
+            >미발행</FilterChip>
+          </div>
+
           {/* 요약 */}
           <div className="grid grid-cols-3 gap-2 text-xs">
             <SummaryStat label="필터 결과" value={`${summary.count}건`} />
@@ -188,6 +227,18 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
                       <span className="font-bold break-keep">{customerName(r.customer_id)}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--secondary)] text-[var(--muted-foreground)]">
                         #{r.invoice_number || r.id}
+                      </span>
+                      <span
+                        onClick={(e) => toggleIssued(r, e)}
+                        role="button"
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                          r.invoice_issued
+                            ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30'
+                            : 'bg-orange-500/15 text-orange-300 hover:bg-orange-500/25'
+                        }`}
+                        title={r.invoice_issued ? '발행 완료 (해제하려면 클릭)' : '미발행 (체크하려면 클릭)'}
+                      >
+                        {r.invoice_issued ? '✅ 발행' : '⏳ 미발행'}
                       </span>
                     </div>
                     <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
@@ -276,6 +327,25 @@ function TabButton({ active, onClick, children }) {
         active ? 'border-[var(--primary)] text-[var(--foreground)]' : 'border-transparent text-[var(--muted-foreground)]'
       }`}
     >
+      {children}
+    </button>
+  );
+}
+
+function FilterChip({ active, onClick, children, color, icon: Icon }) {
+  const colorMap = {
+    gray: active ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : '',
+    green: active ? 'bg-green-500/20 border-green-500/40 text-green-300' : '',
+    orange: active ? 'bg-orange-500/20 border-orange-500/40 text-orange-300' : '',
+  };
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border font-semibold transition-colors ${
+        active ? colorMap[color] : 'bg-[var(--secondary)] border-[var(--border)] text-[var(--muted-foreground)]'
+      }`}
+    >
+      {Icon && <Icon className="w-3.5 h-3.5" />}
       {children}
     </button>
   );

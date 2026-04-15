@@ -250,6 +250,8 @@ export const supabase = {
       if (filters.orderId) params.append('order_id', `eq.${filters.orderId}`);
       if (filters.status) params.append('payment_status', `eq.${filters.status}`);
       if (filters.hasBalance) params.append('balance', 'gt.0');
+      if (filters.invoiceIssued === true) params.append('invoice_issued', 'eq.true');
+      if (filters.invoiceIssued === false) params.append('invoice_issued', 'eq.false');
       if (filters.invoiceDate) params.append('invoice_date', `eq.${filters.invoiceDate}`);
       if (filters.invoiceDateFrom) params.append('invoice_date', `gte.${filters.invoiceDateFrom}`);
       if (filters.invoiceDateTo) params.append('invoice_date', `lte.${filters.invoiceDateTo}`);
