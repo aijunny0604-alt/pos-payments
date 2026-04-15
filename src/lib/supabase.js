@@ -241,4 +241,110 @@ export const supabase = {
     if (customer.id) return await this.updateCustomer(customer.id, customer);
     return await this.addCustomer(customer);
   },
+
+  // ===== payment_records (pos-payments 신규) =====
+  async getPaymentRecords(filters = {}) {
+    try {
+      const params = new URLSearchParams({ order: 'created_at.desc' });
+      if (filters.customerId) params.append('customer_id', `eq.${filters.customerId}`);
+      if (filters.orderId) params.append('order_id', `eq.${filters.orderId}`);
+      if (filters.status) params.append('payment_status', `eq.${filters.status}`);
+      if (filters.hasBalance) params.append('balance', 'gt.0');
+      if (filters.invoiceDate) params.append('invoice_date', `eq.${filters.invoiceDate}`);
+      if (filters.invoiceDateFrom) params.append('invoice_date', `gte.${filters.invoiceDateFrom}`);
+      if (filters.invoiceDateTo) params.append('invoice_date', `lte.${filters.invoiceDateTo}`);
+      if (filters.limit) params.append('limit', String(filters.limit));
+      return await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records?${params.toString()}`, { headers });
+    } catch (e) { console.error('getPaymentRecords:', e); return []; }
+  },
+  async getPaymentRecord(id) {
+    try {
+      const r = await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records?id=eq.${id}`, { headers });
+      return r[0] || null;
+    } catch (e) { console.error('getPaymentRecord:', e); return null; }
+  },
+  async addPaymentRecord(record) {
+    try {
+      return await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records`, {
+        method: 'POST', headers: headersWithReturn, body: JSON.stringify(record),
+      });
+    } catch (e) { console.error('addPaymentRecord:', e); return null; }
+  },
+  async updatePaymentRecord(id, patch) {
+    try {
+      const r = await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records?id=eq.${id}`, {
+        method: 'PATCH', headers: headersWithReturn, body: JSON.stringify(patch),
+      });
+      return r[0] || null;
+    } catch (e) { console.error('updatePaymentRecord:', e); return null; }
+  },
+  async deletePaymentRecord(id) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/payment_records?id=eq.${id}`, { method: 'DELETE', headers: headersNoContent });
+      return true;
+    } catch (e) { console.error('deletePaymentRecord:', e); return false; }
+  },
+
+  // ===== payment_history (pos-payments 신규) =====
+  async getPaymentHistory(filters = {}) {
+    try {
+      const params = new URLSearchParams({ order: 'paid_at.desc' });
+      if (filters.recordId) params.append('payment_record_id', `eq.${filters.recordId}`);
+      if (filters.paidFrom) params.append('paid_at', `gte.${filters.paidFrom}`);
+      if (filters.paidTo) params.append('paid_at', `lte.${filters.paidTo}`);
+      if (filters.limit) params.append('limit', String(filters.limit));
+      return await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_history?${params.toString()}`, { headers });
+    } catch (e) { console.error('getPaymentHistory:', e); return []; }
+  },
+  async addPaymentHistory(entry) {
+    try {
+      return await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_history`, {
+        method: 'POST', headers: headersWithReturn, body: JSON.stringify(entry),
+      });
+    } catch (e) { console.error('addPaymentHistory:', e); return null; }
+  },
+  async deletePaymentHistory(id) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/payment_history?id=eq.${id}`, { method: 'DELETE', headers: headersNoContent });
+      return true;
+    } catch (e) { console.error('deletePaymentHistory:', e); return false; }
+  },
+
+  // ===== 대시보드 집계 =====
+  async getTodayPaidTotal() {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = await fetchJSON(
+        `${SUPABASE_URL}/rest/v1/payment_history?paid_at=gte.${today}T00:00:00&paid_at=lt.${today}T24:00:00&select=amount`,
+        { headers }
+      );
+      return rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    } catch (e) { console.error('getTodayPaidTotal:', e); return 0; }
+  },
+  async getOutstandingTotal() {
+    try {
+      const rows = await fetchJSON(
+        `${SUPABASE_URL}/rest/v1/payment_records?balance=gt.0&select=balance`,
+        { headers }
+      );
+      return rows.reduce((s, r) => s + Number(r.balance || 0), 0);
+    } catch (e) { console.error('getOutstandingTotal:', e); return 0; }
+  },
+  async getOverdueRecords(limit = 10) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      return await fetchJSON(
+        `${SUPABASE_URL}/rest/v1/payment_records?due_date=lt.${today}&balance=gt.0&order=due_date.asc&limit=${limit}`,
+        { headers }
+      );
+    } catch (e) { console.error('getOverdueRecords:', e); return []; }
+  },
+  async getRecentPayments(limit = 10) {
+    try {
+      return await fetchJSON(
+        `${SUPABASE_URL}/rest/v1/payment_history?order=paid_at.desc&limit=${limit}`,
+        { headers }
+      );
+    } catch (e) { console.error('getRecentPayments:', e); return []; }
+  },
 };
