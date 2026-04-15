@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export default function PaymentRegisterModal({ open, onClose, onSaved }) {
+export default function PaymentRegisterModal({ open, onClose, onSaved, initialCustomerId, initialRecordId }) {
   const [mode, setMode] = useState('existing'); // 'existing' | 'new'
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('');
@@ -27,7 +27,10 @@ export default function PaymentRegisterModal({ open, onClose, onSaved }) {
   const [error, setError] = useState('');
 
   const resetForm = () => {
-    setMode('existing'); setCustomerId(''); setRecords([]); setRecordId('');
+    setMode('existing');
+    setCustomerId(initialCustomerId ? String(initialCustomerId) : '');
+    setRecords([]);
+    setRecordId(initialRecordId ? String(initialRecordId) : '');
     setNewTotal(''); setNewOrderId(''); setNewInvoiceNumber(''); setNewDueDate('');
     setNewInvoiceDate(todayISO());
     setAmount(''); setMethod('계좌이체'); setMemo(''); setError('');
@@ -37,13 +40,21 @@ export default function PaymentRegisterModal({ open, onClose, onSaved }) {
     if (!open) return;
     resetForm();
     supabase.getCustomers().then(setCustomers).catch(() => setCustomers([]));
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialCustomerId, initialRecordId]);
 
   useEffect(() => {
     if (!customerId || mode !== 'existing') { setRecords([]); return; }
     setRecordsLoading(true);
     supabase.getPaymentRecords({ customerId, hasBalance: true })
-      .then((r) => { setRecords(r); setRecordId(r[0]?.id || ''); })
+      .then((r) => {
+        setRecords(r);
+        // initialRecordId 있으면 유지, 없으면 첫 번째 선택
+        setRecordId((prev) => {
+          if (prev && r.some((x) => String(x.id) === String(prev))) return prev;
+          return r[0]?.id || '';
+        });
+      })
       .finally(() => setRecordsLoading(false));
   }, [customerId, mode]);
 

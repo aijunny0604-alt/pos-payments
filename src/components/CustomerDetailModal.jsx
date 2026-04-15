@@ -76,6 +76,14 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
               💳 일괄 입금 ({fmt(outstandingTotal)}원 자동 배분)
             </button>
           )}
+          {onAddPayment && (
+            <button
+              onClick={() => onAddPayment(customer, null)}
+              className="w-full mt-1.5 py-2 rounded-lg bg-[var(--primary)]/15 border border-[var(--primary)]/30 text-[var(--primary)] text-xs font-bold hover:bg-[var(--primary)]/25"
+            >
+              + {customer.name || '업체'}에 바로 입금
+            </button>
+          )}
         </div>
 
         {/* 탭 */}

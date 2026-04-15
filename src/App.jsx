@@ -22,6 +22,7 @@ export default function App() {
   const [recent, setRecent] = useState([]);
   const [recordsCount, setRecordsCount] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalContext, setModalContext] = useState({ customerId: null, recordId: null });
   const [customerModal, setCustomerModal] = useState(null);
   const [bulkModal, setBulkModal] = useState(null);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
@@ -277,14 +278,16 @@ export default function App() {
         </section>
 
         <footer className="text-center text-[10px] text-[var(--muted-foreground)] pt-2 pb-8">
-          pos-payments v1.1.0-beta · 고객 {fmt(customers.length)}명 연결
+          pos-payments v1.2.0-beta · 고객 {fmt(customers.length)}명 연결
         </footer>
       </main>
 
       <PaymentRegisterModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); setModalContext({ customerId: null, recordId: null }); }}
         onSaved={() => { load(); }}
+        initialCustomerId={modalContext.customerId}
+        initialRecordId={modalContext.recordId}
       />
 
       <CustomerDetailModal
@@ -292,7 +295,14 @@ export default function App() {
         customer={customerModal}
         onClose={() => setCustomerModal(null)}
         onBulkPay={(customer, records) => setBulkModal({ customer, records })}
-        onAddPayment={(customer) => { setCustomerModal(null); setTimeout(() => setModalOpen(true), 100); }}
+        onAddPayment={(customer, record) => {
+          setCustomerModal(null);
+          setModalContext({
+            customerId: customer?.id || null,
+            recordId: record?.id || null,
+          });
+          setTimeout(() => setModalOpen(true), 100);
+        }}
       />
 
       <BulkPaymentModal
