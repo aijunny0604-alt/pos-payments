@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import PaymentRegisterModal from '@/components/PaymentRegisterModal';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -16,6 +17,7 @@ export default function App() {
   const [overdue, setOverdue] = useState([]);
   const [recent, setRecent] = useState([]);
   const [recordsCount, setRecordsCount] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,13 +62,22 @@ export default function App() {
             <p className="text-[11px] text-[var(--muted-foreground)] break-keep">입출금 · 미수 · 이월 잔금 · 명세서</p>
           </div>
         </div>
-        <button
-          onClick={load}
-          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-semibold flex-shrink-0 hover:bg-[var(--secondary)] transition-colors"
-          disabled={loading}
-        >
-          {loading ? '⟳' : '↻'} 새로고침
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            onClick={load}
+            className="h-8 w-8 rounded-lg border border-[var(--border)] text-xs font-semibold hover:bg-[var(--secondary)] transition-colors"
+            disabled={loading}
+            title="새로고침"
+          >
+            {loading ? '⟳' : '↻'}
+          </button>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="h-8 px-3 rounded-lg text-xs font-bold bg-[var(--primary)] text-white hover:opacity-90 transition-opacity flex items-center gap-1"
+          >
+            <span className="text-sm">+</span> 입금
+          </button>
+        </div>
       </header>
 
       <main className="p-4 max-w-md mx-auto space-y-3">
@@ -130,7 +141,7 @@ export default function App() {
           <ol className="space-y-1 text-[12px]">
             {[
               ['✅', '대시보드 (오늘 입금/미수/이월/연체)'],
-              ['⏳', '입금 등록 모달'],
+              ['✅', '입금 등록 모달'],
               ['⏳', '업체별 입출금 탭'],
               ['⏳', '일괄 입금 자동 배분'],
               ['⏳', '명세서 PNG/인쇄/클립보드'],
@@ -152,9 +163,24 @@ export default function App() {
         </section>
 
         <footer className="text-center text-[10px] text-[var(--muted-foreground)] pt-2 pb-8">
-          pos-payments v0.1.0-beta · 고객 {fmt(customers.length)}명 연결
+          pos-payments v0.2.0-beta · 고객 {fmt(customers.length)}명 연결
         </footer>
       </main>
+
+      <PaymentRegisterModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSaved={() => { load(); }}
+      />
+
+      {/* 플로팅 액션 버튼 (모바일 빠른 접근) */}
+      <button
+        onClick={() => setModalOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--primary)] text-white shadow-2xl flex items-center justify-center text-2xl font-bold hover:opacity-90 transition-all active:scale-95 z-40"
+        aria-label="입금 등록"
+      >
+        +
+      </button>
     </div>
   );
 }
