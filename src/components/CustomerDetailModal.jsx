@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { exportCustomerReport } from '@/lib/exportExcel';
+import { FileSpreadsheet, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -9,11 +11,13 @@ const dateKST = (iso) => {
 };
 
 export default function CustomerDetailModal({ open, customer, onClose, onBulkPay, onAddPayment, onEditHistory, onQuickPay }) {
-  const [tab, setTab] = useState('outstanding'); // outstanding | payments | orders | invoices
+  const [tab, setTab] = useState('outstanding');
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!open || !customer) return;
@@ -37,28 +41,91 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
   const outstandingTotal = useMemo(() => outstandingRecords.reduce((s, r) => s + Number(r.balance || 0), 0), [outstandingRecords]);
   const totalOrders = useMemo(() => orders.length, [orders]);
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const [allRecords, allHistory, settings] = await Promise.all([
+        supabase.getPaymentRecords({}),
+        supabase.getPaymentHistory({}),
+        supabase.getSettings(),
+      ]);
+      await exportCustomerReport({
+        customer,
+        records: allRecords,
+        history: allHistory,
+        settings,
+        orders,
+      });
+    } catch (e) {
+      alert('Excel 실패: ' + e.message);
+    } finally { setExporting(false); }
+  };
+
+  const handlePrint = () => {
+    document.body.classList.add('print-customer-mode');
+    setTimeout(() => {
+      window.print();
+      document.body.classList.remove('print-customer-mode');
+    }, 100);
+  };
+
   if (!open || !customer) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 customer-detail-modal"
       style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={onClose}
     >
+      <style>{`
+        @media print {
+          body.print-customer-mode > *:not(.customer-detail-modal) { display: none !important; }
+          body.print-customer-mode .customer-detail-modal {
+            position: static !important; background: white !important; backdrop-filter: none !important;
+            display: block !important; padding: 0 !important;
+          }
+          body.print-customer-mode .customer-detail-modal > div {
+            box-shadow: none !important; border: none !important; max-height: none !important;
+            background: white !important; color: black !important; max-width: 100% !important;
+          }
+          body.print-customer-mode .no-print { display: none !important; }
+          body.print-customer-mode .customer-detail-modal table { color: black !important; }
+        }
+      `}</style>
       <div
         className="w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-3xl sm:rounded-2xl border border-[var(--primary)] bg-[var(--card)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="p-4 border-b border-[var(--border)] flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold break-keep">🏢 {customer.name || `#${customer.id}`}</h3>
-            <p className="text-[11px] text-[var(--muted-foreground)] break-keep mt-0.5">
-              {customer.phone || '-'}
-              {customer.address && <span className="ml-2">📍 {customer.address}</span>}
-            </p>
+        <div className="p-4 border-b border-[var(--border)]">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-bold break-keep">🏢 {customer.name || `#${customer.id}`}</h3>
+              <p className="text-[11px] text-[var(--muted-foreground)] break-keep mt-0.5">
+                {customer.phone || '-'}
+                {customer.address && <span className="ml-2">📍 {customer.address}</span>}
+              </p>
+            </div>
+            <button onClick={onClose} className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--secondary)]">✕</button>
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--secondary)]">✕</button>
+          {/* 액션 버튼 */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center justify-center gap-1 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[11px] font-bold disabled:opacity-50 no-print"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting ? '생성중...' : '엑셀 다운로드'}
+            </button>
+            <button
+              onClick={handlePrint}
+              className="flex items-center justify-center gap-1 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[11px] font-bold no-print"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              인쇄
+            </button>
+          </div>
         </div>
 
         {/* 요약 */}
@@ -207,30 +274,86 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
             <div className="space-y-2">
               {orders.length === 0 ? (
                 <p className="text-sm text-center text-[var(--muted-foreground)] py-6">주문 내역 없음</p>
-              ) : orders.slice(0, 30).map((o) => (
-                <div key={o.id} className="p-3 rounded-lg bg-[var(--secondary)] text-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold">#{o.order_number || o.id}</div>
-                      <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
-                        {dateKST(o.created_at)}
+              ) : orders.slice(0, 50).map((o) => {
+                const items = Array.isArray(o.items) ? o.items : [];
+                const expanded = expandedOrder === o.id;
+                return (
+                  <div key={o.id} className="rounded-lg bg-[var(--secondary)] text-sm overflow-hidden">
+                    <button
+                      onClick={() => setExpandedOrder(expanded ? null : o.id)}
+                      className="w-full p-3 text-left hover:bg-[var(--accent)] transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold flex items-center gap-1.5">
+                            #{o.id}
+                            {items.length > 0 && (
+                              expanded ? <ChevronUp className="w-3.5 h-3.5 text-[var(--muted-foreground)]" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+                            )}
+                          </div>
+                          <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
+                            {dateKST(o.created_at)} · {items.length}품목
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-bold text-sm">{fmt(o.total)}원</div>
+                          {Number(o.total_returned) > 0 && (
+                            <div className="text-[10px] text-orange-400">환불 {fmt(o.total_returned)}</div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-bold text-sm">{fmt(o.total_price || o.total_amount)}원</div>
-                    </div>
+                      {!expanded && items.length > 0 && (
+                        <p className="text-[11px] text-[var(--muted-foreground)] mt-1 break-words leading-snug">
+                          {items.slice(0, 3).map((it) => it.name || it.product_name).filter(Boolean).join(', ')}
+                          {items.length > 3 && ` 외 ${items.length - 3}건`}
+                        </p>
+                      )}
+                    </button>
+                    {expanded && items.length > 0 && (
+                      <div className="px-3 pb-3 pt-1 border-t border-[var(--border)]">
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="text-[var(--muted-foreground)] border-b border-[var(--border)]">
+                              <th className="text-left py-1 font-normal">품목</th>
+                              <th className="text-right py-1 font-normal w-10">수량</th>
+                              <th className="text-right py-1 font-normal w-16">단가</th>
+                              <th className="text-right py-1 font-normal w-20">소계</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((it, i) => {
+                              const qty = Number(it.quantity || 1);
+                              const price = Number(it.price || 0);
+                              return (
+                                <tr key={i} className="border-b border-[var(--border)]/30 last:border-b-0">
+                                  <td className="py-1.5 break-words leading-snug">{it.name || it.product_name || '-'}</td>
+                                  <td className="text-right py-1.5">{qty}</td>
+                                  <td className="text-right py-1.5">{fmt(price)}</td>
+                                  <td className="text-right py-1.5 font-semibold">{fmt(qty * price)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-[var(--border)] font-bold">
+                              <td colSpan="3" className="py-1.5 text-right">합계</td>
+                              <td className="text-right py-1.5 text-[var(--primary)]">{fmt(o.total)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                        {o.memo && (
+                          <p className="mt-2 p-2 rounded bg-[var(--background)] text-[10px] text-[var(--muted-foreground)] break-words">
+                            📝 {o.memo}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {o.items && Array.isArray(o.items) && o.items.length > 0 && (
-                    <p className="text-[11px] text-[var(--muted-foreground)] mt-1 break-words leading-snug">
-                      {o.items.slice(0, 3).map((it) => it.name || it.product_name).filter(Boolean).join(', ')}
-                      {o.items.length > 3 && ` 외 ${o.items.length - 3}건`}
-                    </p>
-                  )}
-                </div>
-              ))}
-              {orders.length > 30 && (
+                );
+              })}
+              {orders.length > 50 && (
                 <p className="text-[11px] text-center text-[var(--muted-foreground)] pt-2">
-                  최근 30건만 표시 (전체 {orders.length}건)
+                  최근 50건만 표시 (전체 {orders.length}건)
                 </p>
               )}
             </div>

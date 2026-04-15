@@ -241,6 +241,7 @@ export default function App() {
           customers={customers}
           onOpenPayment={() => setPaymentModal({ open: true, customerId: null, recordId: null })}
           onEditHistory={(h) => setEditModal(h)}
+          onOpenCustomer={(c) => setCustomerModal(c)}
         />
       )}
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Filter, Plus, Calendar, Edit2 } from 'lucide-react';
+import { exportFilteredExcel } from '@/lib/exportExcel';
+import { Search, Plus, Edit2, FileSpreadsheet, ChevronRight } from 'lucide-react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -9,7 +10,7 @@ const dateKST = (iso) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export default function PaymentsPage({ customers, onOpenPayment, onEditHistory }) {
+export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, onOpenCustomer }) {
   const [tab, setTab] = useState('records'); // records | history
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
@@ -74,12 +75,30 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory }
       {/* 헤더 */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-bold">{tab === 'records' ? '결제 레코드' : '입금 이력'}</h2>
-        <button
-          onClick={onOpenPayment}
-          className="flex items-center gap-1 h-9 px-3 rounded-lg bg-[var(--primary)] text-white text-xs font-bold"
-        >
-          <Plus className="w-4 h-4" /> 입금 등록
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={async () => {
+              try {
+                await exportFilteredExcel({
+                  records: tab === 'records' ? filteredRecords : records,
+                  history: tab === 'history' ? filteredHistory : history,
+                  customers,
+                  label: `입출금_${tab === 'records' ? '결제레코드' : '입금이력'}_${statusFilter}`,
+                });
+              } catch (e) { alert('Excel 실패: ' + e.message); }
+            }}
+            className="flex items-center gap-1 h-9 px-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-bold"
+            title="필터 결과 Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Excel
+          </button>
+          <button
+            onClick={onOpenPayment}
+            className="flex items-center gap-1 h-9 px-3 rounded-lg bg-[var(--primary)] text-white text-xs font-bold"
+          >
+            <Plus className="w-4 h-4" /> 입금 등록
+          </button>
+        </div>
       </div>
 
       {/* 탭 전환 */}
@@ -155,59 +174,79 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory }
         ) : tab === 'records' ? (
           filteredRecords.length === 0 ? (
             <p className="text-sm text-center text-[var(--muted-foreground)] py-8">조건에 맞는 결제 레코드 없음</p>
-          ) : filteredRecords.map((r) => (
-            <div key={r.id} className="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)]">
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold break-keep">{customerName(r.customer_id)}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--secondary)] text-[var(--muted-foreground)]">
-                      #{r.invoice_number || r.id}
-                    </span>
+          ) : filteredRecords.map((r) => {
+            const cust = customers.find((c) => String(c.id) === String(r.customer_id));
+            return (
+              <button
+                key={r.id}
+                onClick={() => cust && onOpenCustomer && onOpenCustomer(cust)}
+                className="w-full text-left p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--accent)] transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold break-keep">{customerName(r.customer_id)}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--secondary)] text-[var(--muted-foreground)]">
+                        #{r.invoice_number || r.id}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
+                      {r.invoice_date && <>발행 {r.invoice_date}</>}
+                      {r.due_date && <> · 납기 {r.due_date}</>}
+                      {r.order_id && <> · 주문 #{r.order_id}</>}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
-                    {r.invoice_date && <>발행 {r.invoice_date}</>}
-                    {r.due_date && <> · 납기 {r.due_date}</>}
-                    {r.order_id && <> · 주문 #{r.order_id}</>}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <StatusBadge status={r.payment_status} />
+                    <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)]" />
                   </div>
                 </div>
-                <StatusBadge status={r.payment_status} />
-              </div>
-              <div className="flex items-end justify-between gap-2 pt-1.5 border-t border-[var(--border)]">
-                <div className="text-[11px] text-[var(--muted-foreground)]">
-                  총 {fmt(r.total_amount)} / 입금 {fmt(r.paid_amount)}
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] text-[var(--muted-foreground)]">잔금</div>
-                  <div className={`text-base font-bold ${Number(r.balance) > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                    {fmt(r.balance)}원
+                <div className="flex items-end justify-between gap-2 pt-1.5 border-t border-[var(--border)]">
+                  <div className="text-[11px] text-[var(--muted-foreground)]">
+                    총 {fmt(r.total_amount)} / 입금 {fmt(r.paid_amount)}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[var(--muted-foreground)]">잔금</div>
+                    <div className={`text-base font-bold ${Number(r.balance) > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                      {fmt(r.balance)}원
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))
+              </button>
+            );
+          })
         ) : (
           filteredHistory.length === 0 ? (
             <p className="text-sm text-center text-[var(--muted-foreground)] py-8">조건에 맞는 입금 이력 없음</p>
           ) : filteredHistory.map((h) => {
             const rec = records.find((r) => r.id === h.payment_record_id);
+            const cust = rec && customers.find((c) => String(c.id) === String(rec.customer_id));
             return (
               <div key={h.id} className="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)]">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <button
+                    onClick={() => cust && onOpenCustomer && onOpenCustomer(cust)}
+                    className="min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
+                    disabled={!cust}
+                  >
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-green-400 text-base">{fmt(h.amount)}원</span>
+                      <span className={`font-bold text-base ${h.type === 'expense' ? 'text-red-400' : 'text-green-400'}`}>
+                        {h.type === 'expense' ? '-' : '+'}{fmt(h.amount)}원
+                      </span>
                       {h.method && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--secondary)] text-[var(--muted-foreground)]">{h.method}</span>}
+                      {h.type === 'expense' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">출금</span>}
                     </div>
                     {rec && (
-                      <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
-                        {customerName(rec.customer_id)} · #{rec.invoice_number || rec.id}
+                      <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 flex items-center gap-1">
+                        <span className="font-semibold text-[var(--foreground)]">{customerName(rec.customer_id)}</span>
+                        <span>· #{rec.invoice_number || rec.id}</span>
+                        {cust && <ChevronRight className="w-3 h-3" />}
                       </div>
                     )}
                     {h.memo && (
                       <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 break-words">📝 {h.memo}</div>
                     )}
-                  </div>
+                  </button>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <div className="text-[10px] text-[var(--muted-foreground)]">{dateKST(h.paid_at)}</div>
                     {onEditHistory && (
