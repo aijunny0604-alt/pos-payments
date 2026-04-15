@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseClient } from '@/lib/supabase';
+import { exportPaymentsExcel } from '@/lib/exportExcel';
 import PaymentRegisterModal from '@/components/PaymentRegisterModal';
+import CustomerDetailModal from '@/components/CustomerDetailModal';
+import BulkPaymentModal from '@/components/BulkPaymentModal';
+import InvoiceModal from '@/components/InvoiceModal';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -18,6 +22,11 @@ export default function App() {
   const [recent, setRecent] = useState([]);
   const [recordsCount, setRecordsCount] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [customerModal, setCustomerModal] = useState(null);
+  const [bulkModal, setBulkModal] = useState(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [customerRanking, setCustomerRanking] = useState([]);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,7 +37,7 @@ export default function App() {
         supabase.getOutstandingTotal(),
         supabase.getOverdueRecords(5),
         supabase.getRecentPayments(5),
-        supabase.getPaymentRecords({ limit: 1 }).then(() => supabase.getPaymentRecords({})),
+        supabase.getPaymentRecords({ hasBalance: true }),
       ]);
       setCustomers(c);
       setTodayPaid(tp);
@@ -36,6 +45,22 @@ export default function App() {
       setOverdue(od);
       setRecent(rp);
       setRecordsCount(records.length);
+
+      // 업체별 미수 합계 랭킹
+      const byCustomer = new Map();
+      for (const r of records) {
+        if (!r.customer_id) continue;
+        const prev = byCustomer.get(r.customer_id) || { balance: 0, count: 0 };
+        byCustomer.set(r.customer_id, {
+          balance: prev.balance + Number(r.balance || 0),
+          count: prev.count + 1,
+        });
+      }
+      const ranking = [...byCustomer.entries()]
+        .map(([id, v]) => ({ ...v, customer: c.find((x) => x.id === id) || { id, name: `#${id}` } }))
+        .filter((x) => x.balance > 0)
+        .sort((a, b) => b.balance - a.balance);
+      setCustomerRanking(ranking);
     } catch (e) {
       console.error(e);
     } finally {
@@ -44,6 +69,32 @@ export default function App() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // WebSocket 실시간 구독 (Step 7)
+  useEffect(() => {
+    const ch = supabaseClient
+      .channel('pos-payments-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_records' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_history' }, () => load())
+      .subscribe();
+    return () => { supabaseClient.removeChannel(ch); };
+  }, [load]);
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const [records, history] = await Promise.all([
+        supabase.getPaymentRecords({}),
+        supabase.getPaymentHistory({}),
+      ]);
+      await exportPaymentsExcel({ records, history, customers });
+    } catch (e) {
+      console.error('exportExcel:', e);
+      alert('Excel 내보내기 실패: ' + (e.message || '알 수 없는 오류'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || `#${id}`;
 
@@ -62,7 +113,22 @@ export default function App() {
             <p className="text-[11px] text-[var(--muted-foreground)] break-keep">입출금 · 미수 · 이월 잔금 · 명세서</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setInvoiceOpen(true)}
+            className="h-8 px-2 rounded-lg border border-[var(--border)] text-[11px] font-semibold hover:bg-[var(--secondary)] transition-colors"
+            title="명세서"
+          >
+            📄
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="h-8 px-2 rounded-lg border border-[var(--border)] text-[11px] font-semibold hover:bg-[var(--secondary)] transition-colors disabled:opacity-50"
+            title="Excel 내보내기"
+          >
+            {exporting ? '⟳' : '📊'}
+          </button>
           <button
             onClick={load}
             className="h-8 w-8 rounded-lg border border-[var(--border)] text-xs font-semibold hover:bg-[var(--secondary)] transition-colors"
@@ -70,12 +136,6 @@ export default function App() {
             title="새로고침"
           >
             {loading ? '⟳' : '↻'}
-          </button>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="h-8 px-3 rounded-lg text-xs font-bold bg-[var(--primary)] text-white hover:opacity-90 transition-opacity flex items-center gap-1"
-          >
-            <span className="text-sm">+</span> 입금
           </button>
         </div>
       </header>
@@ -115,6 +175,26 @@ export default function App() {
           ))}
         </Panel>
 
+        {/* 업체별 미수 랭킹 */}
+        <Panel title="🏢 업체별 미수" emptyMessage="미수 있는 업체 없음">
+          {customerRanking.length > 0 && customerRanking.slice(0, 8).map((r) => (
+            <button
+              key={r.customer.id}
+              onClick={() => setCustomerModal(r.customer)}
+              className="w-full p-2.5 rounded-lg bg-[var(--secondary)] hover:bg-[var(--secondary)]/70 text-sm flex items-start gap-2 text-left transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold break-keep">{r.customer.name || `#${r.customer.id}`}</div>
+                <div className="text-[11px] text-[var(--muted-foreground)]">미수 {r.count}건</div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="font-bold text-red-400 text-sm">{fmt(r.balance)}원</div>
+                <div className="text-[10px] text-[var(--muted-foreground)]">&gt;</div>
+              </div>
+            </button>
+          ))}
+        </Panel>
+
         {/* 최근 입금 */}
         <Panel title="💵 최근 입금" emptyMessage="입금 내역 없음">
           {recent.length > 0 && recent.map((p) => (
@@ -142,11 +222,11 @@ export default function App() {
             {[
               ['✅', '대시보드 (오늘 입금/미수/이월/연체)'],
               ['✅', '입금 등록 모달'],
-              ['⏳', '업체별 입출금 탭'],
-              ['⏳', '일괄 입금 자동 배분'],
-              ['⏳', '명세서 PNG/인쇄/클립보드'],
-              ['⏳', 'Excel 내보내기'],
-              ['⏳', 'WebSocket 실시간 반영'],
+              ['✅', '업체별 입출금 탭'],
+              ['✅', '일괄 입금 자동 배분'],
+              ['✅', '명세서 PNG/인쇄/클립보드'],
+              ['✅', 'Excel 내보내기'],
+              ['✅', 'WebSocket 실시간 반영'],
             ].map(([icon, title], i) => (
               <li key={i} className="flex items-start gap-1.5">
                 <span className="flex-shrink-0">{icon}</span>
@@ -163,7 +243,7 @@ export default function App() {
         </section>
 
         <footer className="text-center text-[10px] text-[var(--muted-foreground)] pt-2 pb-8">
-          pos-payments v0.2.0-beta · 고객 {fmt(customers.length)}명 연결
+          pos-payments v1.0.0-beta · 고객 {fmt(customers.length)}명 연결
         </footer>
       </main>
 
@@ -172,6 +252,24 @@ export default function App() {
         onClose={() => setModalOpen(false)}
         onSaved={() => { load(); }}
       />
+
+      <CustomerDetailModal
+        open={!!customerModal}
+        customer={customerModal}
+        onClose={() => setCustomerModal(null)}
+        onBulkPay={(customer, records) => setBulkModal({ customer, records })}
+        onAddPayment={(customer) => { setCustomerModal(null); setTimeout(() => setModalOpen(true), 100); }}
+      />
+
+      <BulkPaymentModal
+        open={!!bulkModal}
+        customer={bulkModal?.customer}
+        records={bulkModal?.records}
+        onClose={() => setBulkModal(null)}
+        onSaved={() => { load(); setCustomerModal(null); }}
+      />
+
+      <InvoiceModal open={invoiceOpen} onClose={() => setInvoiceOpen(false)} />
 
       {/* 플로팅 액션 버튼 (모바일 빠른 접근) */}
       <button
