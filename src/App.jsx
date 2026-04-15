@@ -27,6 +27,8 @@ export default function App() {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [customerRanking, setCustomerRanking] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +81,22 @@ export default function App() {
       .subscribe();
     return () => { supabaseClient.removeChannel(ch); };
   }, [load]);
+
+  const handleSync = async () => {
+    if (syncing) return;
+    if (!confirm('운영 앱의 주문 데이터를 읽어서 결제 레코드에 없는 주문을 자동 생성합니다.\n\n• 운영 orders 테이블은 READ만 (변경 없음)\n• 이미 생성된 주문은 중복 방지\n\n진행할까요?')) return;
+    setSyncing(true); setSyncResult(null);
+    try {
+      const r = await supabase.syncOrdersToPaymentRecords();
+      setSyncResult(r);
+      await load();
+    } catch (e) {
+      alert('동기화 실패: ' + (e.message || '알 수 없는 오류'));
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncResult(null), 8000);
+    }
+  };
 
   const handleExportExcel = async () => {
     setExporting(true);
@@ -148,10 +166,26 @@ export default function App() {
           <SummaryCard label="연체" value={String(overdue.length)} unit="건" color="orange" />
         </section>
 
-        {/* 전체 결제 레코드 카운트 */}
-        <section className="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-xs flex items-center justify-between">
-          <span className="text-[var(--muted-foreground)]">등록된 결제 레코드</span>
-          <span className="font-bold">{fmt(recordsCount)}건</span>
+        {/* 전체 결제 레코드 카운트 + 동기화 */}
+        <section className="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--muted-foreground)]">등록된 미수 결제</span>
+            <span className="font-bold">{fmt(recordsCount)}건</span>
+          </div>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="w-full py-2 rounded-md text-xs font-semibold border border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)] disabled:opacity-50"
+          >
+            {syncing ? '⟳ 동기화 중...' : '🔄 운영 주문 → 결제 레코드 동기화'}
+          </button>
+          {syncResult && (
+            <div className="text-[11px] p-2 rounded bg-green-500/10 border border-green-500/30 text-green-300 leading-relaxed">
+              ✅ 완료: 전체 {syncResult.total}건 중 <strong>{syncResult.inserted}건 신규 생성</strong>
+              {syncResult.skippedAlreadySynced > 0 && <div>• 이미 동기화됨: {syncResult.skippedAlreadySynced}건</div>}
+              {syncResult.skippedNoCustomer > 0 && <div>• 업체 매칭 실패: {syncResult.skippedNoCustomer}건</div>}
+            </div>
+          )}
         </section>
 
         {/* 연체 주문 */}
@@ -243,7 +277,7 @@ export default function App() {
         </section>
 
         <footer className="text-center text-[10px] text-[var(--muted-foreground)] pt-2 pb-8">
-          pos-payments v1.0.0-beta · 고객 {fmt(customers.length)}명 연결
+          pos-payments v1.1.0-beta · 고객 {fmt(customers.length)}명 연결
         </footer>
       </main>
 

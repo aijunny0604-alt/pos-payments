@@ -347,4 +347,71 @@ export const supabase = {
       );
     } catch (e) { console.error('getRecentPayments:', e); return []; }
   },
+
+  // ===== 주문 → 결제 레코드 동기화 =====
+  async syncOrdersToPaymentRecords() {
+    try {
+      const [orders, customers, existingRecords] = await Promise.all([
+        this.getOrders(),
+        this.getCustomers(),
+        this.getPaymentRecords({}),
+      ]);
+
+      const existingOrderIds = new Set(existingRecords.map((r) => r.order_id).filter(Boolean));
+      const customerByName = new Map();
+      const customerByPhone = new Map();
+      for (const c of customers) {
+        if (c.name) customerByName.set(c.name.trim(), c);
+        if (c.phone) customerByPhone.set(c.phone.trim(), c);
+      }
+
+      const toInsert = [];
+      let skippedNoCustomer = 0;
+      let skippedAlreadySynced = 0;
+
+      for (const o of orders) {
+        if (existingOrderIds.has(o.id)) { skippedAlreadySynced++; continue; }
+
+        const name = (o.customer_name || '').trim();
+        const phone = (o.customer_phone || '').trim();
+        let cust = null;
+        if (name) cust = customerByName.get(name);
+        if (!cust && phone) cust = customerByPhone.get(phone);
+        if (!cust) { skippedNoCustomer++; continue; }
+
+        const total = Number(o.total || 0) - Number(o.total_returned || 0);
+        if (total <= 0) continue;
+
+        toInsert.push({
+          order_id: o.id,
+          customer_id: cust.id,
+          total_amount: total,
+          invoice_date: (o.created_at || '').slice(0, 10) || null,
+          memo: o.memo || null,
+        });
+      }
+
+      // 배치 INSERT (500건씩)
+      let inserted = 0;
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const batch = toInsert.slice(i, i + 500);
+        const result = await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records`, {
+          method: 'POST',
+          headers: headersWithReturn,
+          body: JSON.stringify(batch),
+        });
+        inserted += (result?.length || 0);
+      }
+
+      return {
+        total: orders.length,
+        inserted,
+        skippedAlreadySynced,
+        skippedNoCustomer,
+      };
+    } catch (e) {
+      console.error('syncOrdersToPaymentRecords:', e);
+      throw e;
+    }
+  },
 };
