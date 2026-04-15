@@ -303,6 +303,14 @@ export const supabase = {
       });
     } catch (e) { console.error('addPaymentHistory:', e); return null; }
   },
+  async updatePaymentHistory(id, patch) {
+    try {
+      const r = await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_history?id=eq.${id}`, {
+        method: 'PATCH', headers: headersWithReturn, body: JSON.stringify(patch),
+      });
+      return r[0] || null;
+    } catch (e) { console.error('updatePaymentHistory:', e); return null; }
+  },
   async deletePaymentHistory(id) {
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/payment_history?id=eq.${id}`, { method: 'DELETE', headers: headersNoContent });

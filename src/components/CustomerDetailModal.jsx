@@ -8,7 +8,7 @@ const dateKST = (iso) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export default function CustomerDetailModal({ open, customer, onClose, onBulkPay, onAddPayment }) {
+export default function CustomerDetailModal({ open, customer, onClose, onBulkPay, onAddPayment, onEditHistory }) {
   const [tab, setTab] = useState('outstanding'); // outstanding | payments | orders | invoices
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
@@ -160,16 +160,26 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
               {history.length === 0 ? (
                 <p className="text-sm text-center text-[var(--muted-foreground)] py-6">입금 내역 없음</p>
               ) : history.map((h) => (
-                <div key={h.id} className="p-3 rounded-lg bg-[var(--secondary)] text-sm flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold text-green-400">{fmt(h.amount)}원</div>
-                    <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 flex flex-wrap gap-1.5">
-                      <span>{h.method || '-'}</span>
-                      {h.memo && <span className="break-words">· {h.memo}</span>}
+                <div key={h.id} className="p-3 rounded-lg bg-[var(--secondary)] text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-green-400">{fmt(h.amount)}원</div>
+                      <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 flex flex-wrap gap-1.5">
+                        <span>{h.method || '-'}</span>
+                        {h.memo && <span className="break-words">· {h.memo}</span>}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-[10px] text-[var(--muted-foreground)] whitespace-nowrap flex-shrink-0">
-                    {dateKST(h.paid_at)}
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <div className="text-[10px] text-[var(--muted-foreground)] whitespace-nowrap">{dateKST(h.paid_at)}</div>
+                      {onEditHistory && (
+                        <button
+                          onClick={() => onEditHistory(h)}
+                          className="text-[10px] px-2 py-0.5 rounded border border-[var(--border)] hover:bg-[var(--accent)] text-[var(--muted-foreground)]"
+                        >
+                          ✏️ 수정
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
