@@ -114,8 +114,8 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 customer-detail-modal"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 customer-detail-modal animate-modal-backdrop"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
       onClick={onClose}
     >
       <style>{`
@@ -134,101 +134,143 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
         }
       `}</style>
       <div
-        className="w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-3xl sm:rounded-2xl border border-[var(--primary)] bg-[var(--card)] shadow-2xl"
+        className="relative w-full sm:max-w-3xl lg:max-w-5xl max-h-[94vh] flex flex-col rounded-t-3xl sm:rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-[0_25px_80px_-15px_rgba(0,0,0,0.6)] animate-modal-up overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* 고급 상단 그라데이션 바 */}
+        <div
+          className="absolute top-0 left-0 right-0 h-1.5 pointer-events-none"
+          style={{ background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%)' }}
+        />
+
         {/* 헤더 */}
-        <div className="p-4 border-b border-[var(--border)]">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="min-w-0 flex-1">
-              <h3 className="text-base font-bold break-keep">🏢 {customer.name || `#${customer.id}`}</h3>
-              <p className="text-[11px] text-[var(--muted-foreground)] break-keep mt-0.5">
-                {customer.phone || '-'}
-                {customer.address && <span className="ml-2">📍 {customer.address}</span>}
-              </p>
+        <div className="p-5 sm:p-6 border-b border-[var(--border)]" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, var(--card)) 0%, var(--card) 100%)' }}>
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md"
+                style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: 'white' }}
+              >
+                <span className="text-2xl">🏢</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-xl font-bold break-keep leading-tight">
+                  {customer.name || `#${customer.id}`}
+                </h3>
+                <p className="text-xs text-[var(--muted-foreground)] break-keep mt-1 flex items-center gap-3 flex-wrap">
+                  {customer.phone && <span className="flex items-center gap-1">📞 {customer.phone}</span>}
+                  {customer.address && <span className="flex items-center gap-1">📍 {customer.address}</span>}
+                  {!customer.phone && !customer.address && '-'}
+                </p>
+              </div>
             </div>
-            <button onClick={onClose} className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--secondary)]">✕</button>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] transition-colors text-lg"
+              title="닫기"
+            >
+              ✕
+            </button>
           </div>
           {/* 액션 버튼 */}
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center justify-center gap-1 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[11px] font-bold disabled:opacity-50 no-print"
+              className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-bold disabled:opacity-50 no-print hover:bg-[var(--secondary)] hover:border-[var(--primary)]/40 hover:shadow-md transition-all"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <FileSpreadsheet className="w-4 h-4" />
               {exporting ? '생성중...' : '엑셀 다운로드'}
             </button>
             <button
               onClick={handlePrint}
-              className="flex items-center justify-center gap-1 py-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] text-[11px] font-bold no-print"
+              className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-bold no-print hover:bg-[var(--secondary)] hover:border-[var(--primary)]/40 hover:shadow-md transition-all"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-4 h-4" />
               인쇄
             </button>
           </div>
         </div>
 
         {/* 요약 */}
-        <div className="px-4 pt-3">
-          <div className="grid grid-cols-3 gap-1.5 text-center">
+        <div className="px-5 sm:px-6 pt-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
             <StatBox label="이월 잔금" value={fmt(outstandingTotal)} unit="원" color="red" />
             <StatBox label="주문" value={fmt(totalOrders)} unit="건" color="blue" />
             <StatBox label="입금 내역" value={fmt(history.length)} unit="건" color="green" />
           </div>
-          {outstandingTotal > 0 && onBulkPay && (
-            <button
-              onClick={() => onBulkPay(customer, outstandingRecords)}
-              className="w-full mt-2 py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/25"
-            >
-              💳 일괄 입금 ({fmt(outstandingTotal)}원 자동 배분)
-            </button>
-          )}
-          {onAddPayment && (
-            <button
-              onClick={() => onAddPayment(customer, null)}
-              className="w-full mt-1.5 py-2 rounded-lg bg-[var(--primary)]/15 border border-[var(--primary)]/30 text-[var(--primary)] text-xs font-bold hover:bg-[var(--primary)]/25"
-            >
-              + {customer.name || '업체'}에 바로 입금
-            </button>
-          )}
+          <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            {outstandingTotal > 0 && onBulkPay && (
+              <button
+                onClick={() => onBulkPay(customer, outstandingRecords)}
+                className="py-2.5 rounded-xl bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/40 text-red-300 text-xs font-bold hover:from-red-500/30 hover:to-orange-500/30 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                💳 일괄 입금 ({fmt(outstandingTotal)}원 자동 배분)
+              </button>
+            )}
+            {onAddPayment && (
+              <button
+                onClick={() => onAddPayment(customer, null)}
+                className="py-2.5 rounded-xl bg-gradient-to-r from-blue-500/15 to-purple-500/15 border border-[var(--primary)]/40 text-[var(--primary)] text-xs font-bold hover:from-blue-500/25 hover:to-purple-500/25 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                + {customer.name || '업체'}에 바로 입금
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* 탭 */}
-        <div className="px-4 pt-3 flex gap-1 text-xs border-b border-[var(--border)]">
+        {/* 탭 — Pill 스타일 */}
+        <div className="px-5 sm:px-6 pt-4 flex gap-2 text-sm">
           {[
-            ['outstanding', '미수', outstandingRecords.length],
-            ['payments', '입금', history.length],
-            ['orders', '주문', orders.length],
-          ].map(([key, label, count]) => (
+            ['outstanding', '미수', outstandingRecords.length, '#ef4444'],
+            ['payments', '입금', history.length, '#22c55e'],
+            ['orders', '주문', orders.length, '#3b82f6'],
+          ].map(([key, label, count, color]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`px-3 py-2 font-semibold border-b-2 transition-colors ${
-                tab === key ? 'border-[var(--primary)] text-[var(--foreground)]' : 'border-transparent text-[var(--muted-foreground)]'
-              }`}
+              className="relative px-4 py-2 font-semibold rounded-lg transition-all"
+              style={{
+                background: tab === key ? `color-mix(in srgb, ${color} 18%, var(--card))` : 'transparent',
+                color: tab === key ? color : 'var(--muted-foreground)',
+                boxShadow: tab === key ? `0 0 0 1px ${color}40, 0 4px 12px ${color}30` : 'none',
+              }}
             >
               {label}
-              {count > 0 && <span className="ml-1 text-[10px]">({count})</span>}
+              {count > 0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold"
+                  style={{
+                    background: tab === key ? color : 'var(--secondary)',
+                    color: tab === key ? 'white' : 'var(--muted-foreground)',
+                  }}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
         {/* 본문 */}
-        <div className="flex-1 overflow-y-auto p-4 min-h-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 min-h-0 modal-body-scroll" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading && <p className="text-sm text-center text-[var(--muted-foreground)] py-6">로딩...</p>}
 
           {!loading && tab === 'outstanding' && (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {outstandingRecords.length === 0 ? (
-                <p className="text-sm text-center text-[var(--muted-foreground)] py-6">미수 없음 👍</p>
-              ) : outstandingRecords.map((r) => {
+                <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">미수 없음 👍</p>
+              ) : outstandingRecords.map((r, idx) => {
                 const matchedOrder = r.order_id ? orders.find((o) => String(o.id) === String(r.order_id)) : null;
                 const titleDate = matchedOrder?.created_at ? dateKST(matchedOrder.created_at) : null;
                 return (
                 <div
                   key={r.id}
-                  className={`p-3 rounded-lg bg-[var(--secondary)] text-sm space-y-1 ${r.order_id ? 'cursor-pointer hover:bg-[var(--accent)] hover:ring-1 hover:ring-[var(--primary)]/40 transition-colors' : ''}`}
+                  className={`p-4 rounded-xl border bg-gradient-to-br from-[var(--secondary)] to-[var(--card)] text-sm space-y-2 animate-modal-up ${r.order_id ? 'cursor-pointer hover:border-[var(--primary)] hover:shadow-lg hover:-translate-y-0.5 transition-all' : 'border-[var(--border)]'}`}
+                  style={{
+                    borderColor: r.order_id ? 'color-mix(in srgb, var(--primary) 20%, var(--border))' : 'var(--border)',
+                    animationDelay: `${Math.min(idx * 40, 400)}ms`,
+                  }}
                   onClick={() => r.order_id && openOrderDetail(r.order_id)}
                   title={r.order_id ? '클릭하여 주문 상세 보기' : undefined}
                 >
@@ -310,11 +352,15 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           )}
 
           {!loading && tab === 'payments' && (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {history.length === 0 ? (
-                <p className="text-sm text-center text-[var(--muted-foreground)] py-6">입금 내역 없음</p>
-              ) : history.map((h) => (
-                <div key={h.id} className="p-3 rounded-lg bg-[var(--secondary)] text-sm">
+                <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">입금 내역 없음</p>
+              ) : history.map((h, idx) => (
+                <div
+                  key={h.id}
+                  className="p-4 rounded-xl border border-green-500/20 bg-gradient-to-br from-green-500/5 to-[var(--card)] text-sm hover:shadow-lg hover:-translate-y-0.5 transition-all animate-modal-up"
+                  style={{ animationDelay: `${Math.min(idx * 40, 400)}ms` }}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-green-400">{fmt(h.amount)}원</div>
@@ -341,14 +387,18 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           )}
 
           {!loading && tab === 'orders' && (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {orders.length === 0 ? (
-                <p className="text-sm text-center text-[var(--muted-foreground)] py-6">주문 내역 없음</p>
-              ) : orders.slice(0, 50).map((o) => {
+                <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">주문 내역 없음</p>
+              ) : orders.slice(0, 50).map((o, idx) => {
                 const items = Array.isArray(o.items) ? o.items : [];
                 const expanded = expandedOrder === o.id;
                 return (
-                  <div key={o.id} className="rounded-lg bg-[var(--secondary)] text-sm overflow-hidden">
+                  <div
+                    key={o.id}
+                    className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-[var(--card)] text-sm overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all animate-modal-up"
+                    style={{ animationDelay: `${Math.min(idx * 40, 400)}ms` }}
+                  >
                     <button
                       onClick={() => setExpandedOrder(expanded ? null : o.id)}
                       className="w-full p-3 text-left hover:bg-[var(--accent)] transition-colors"
@@ -449,14 +499,35 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
 
 function StatBox({ label, value, unit, color }) {
   const colorMap = {
-    red: 'bg-red-500/5 border-red-500/20 text-red-400',
-    blue: 'bg-blue-500/5 border-blue-500/20 text-blue-400',
-    green: 'bg-green-500/5 border-green-500/20 text-green-400',
+    red: {
+      bg: 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(251,146,60,0.06))',
+      border: 'rgba(239,68,68,0.3)',
+      text: '#f87171',
+      glow: '0 4px 20px rgba(239,68,68,0.15)',
+    },
+    blue: {
+      bg: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.06))',
+      border: 'rgba(59,130,246,0.3)',
+      text: '#60a5fa',
+      glow: '0 4px 20px rgba(59,130,246,0.15)',
+    },
+    green: {
+      bg: 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(20,184,166,0.06))',
+      border: 'rgba(34,197,94,0.3)',
+      text: '#4ade80',
+      glow: '0 4px 20px rgba(34,197,94,0.15)',
+    },
   };
+  const c = colorMap[color] || colorMap.blue;
   return (
-    <div className={`p-2 rounded-lg border ${colorMap[color]}`}>
-      <div className="text-[10px] text-[var(--muted-foreground)] break-keep">{label}</div>
-      <div className="font-bold text-sm break-all leading-tight">{value}</div>
+    <div
+      className="p-3 rounded-xl border transition-all hover:-translate-y-0.5"
+      style={{ background: c.bg, borderColor: c.border, boxShadow: c.glow }}
+    >
+      <div className="text-[10px] text-[var(--muted-foreground)] break-keep font-medium">{label}</div>
+      <div className="font-bold text-base sm:text-lg break-all leading-tight mt-0.5" style={{ color: c.text }}>
+        {value}
+      </div>
       <div className="text-[9px] text-[var(--muted-foreground)]">{unit}</div>
     </div>
   );
