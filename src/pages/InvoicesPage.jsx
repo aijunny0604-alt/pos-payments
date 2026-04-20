@@ -24,14 +24,30 @@ export default function InvoicesPage({ customers }) {
 
   useEffect(() => {
     setLoading(true);
-    const filters = { invoiceDate: date };
-    if (customerId !== 'all') filters.customerId = customerId;
-    Promise.all([
-      supabase.getPaymentRecords(filters),
-      // 전월 이월: 선택일 이전의 모든 미수
-      supabase.getPaymentRecords({ ...(customerId !== 'all' && { customerId }), hasBalance: true })
-        .then((all) => all.filter((r) => (r.invoice_date || '') < date)),
-    ]).then(([r, prev]) => { setRecords(r); setCarryover(prev); }).finally(() => setLoading(false));
+
+    if (customerId !== 'all') {
+      // 업체 모드: 해당 업체의 "모든" 레코드 로드 → 날짜 기준으로 당월/이월 분리
+      // (오늘까지 발행일 기준) 선택일과 같거나 이후 + 발행일 미지정 = 당월(records)
+      //                        선택일 이전 & 잔금>0 = 이월(carryover)
+      supabase.getPaymentRecords({ customerId })
+        .then((all) => {
+          const current = all.filter((r) => !r.invoice_date || (r.invoice_date || '') >= date);
+          const prev = all.filter((r) => r.invoice_date && r.invoice_date < date && Number(r.balance) > 0);
+          setRecords(current);
+          setCarryover(prev);
+        })
+        .catch((e) => { console.error('[Invoices] load failed:', e); setRecords([]); setCarryover([]); })
+        .finally(() => setLoading(false));
+    } else {
+      // 전체 모드: 기존 로직 (해당 일자에 세금계산서 발행된 레코드 + 이전 이월)
+      Promise.all([
+        supabase.getPaymentRecords({ invoiceDate: date }),
+        supabase.getPaymentRecords({ hasBalance: true })
+          .then((all) => all.filter((r) => (r.invoice_date || '') < date)),
+      ]).then(([r, prev]) => { setRecords(r); setCarryover(prev); })
+        .catch((e) => { console.error('[Invoices] load failed:', e); setRecords([]); setCarryover([]); })
+        .finally(() => setLoading(false));
+    }
   }, [date, customerId]);
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || `#${id}`;
@@ -181,11 +197,26 @@ export default function InvoicesPage({ customers }) {
 
           {loading ? (
             <p className="text-sm text-center py-6">로딩 중...</p>
-          ) : records.length === 0 ? (
-            <p className="text-sm text-center py-6 text-gray-600">해당 일자의 발행 내역이 없습니다.</p>
+          ) : records.length === 0 && carryover.length === 0 ? (
+            <div className="text-center py-6 text-gray-600 space-y-1">
+              <p className="text-sm">
+                {customerId === 'all'
+                  ? '해당 일자에 세금계산서 발행된 레코드가 없습니다.'
+                  : '해당 업체는 아직 결제 레코드가 없습니다.'}
+              </p>
+              <p className="text-xs">
+                {customerId === 'all'
+                  ? '일자를 변경하거나 업체를 선택해 전체 미수를 확인하세요.'
+                  : '운영 POS에서 주문을 등록하거나 설정 → 동기화를 실행하세요.'}
+              </p>
+            </div>
           ) : (
             <>
-              {grouped ? grouped.map((g) => (
+              {records.length === 0 ? (
+                <p className="text-sm text-center py-4 text-gray-600 italic">
+                  당월 신규 발행 없음 — 아래 이월 잔금만 표시됩니다.
+                </p>
+              ) : grouped ? grouped.map((g) => (
                 <section key={g.id} className="mb-4">
                   <h2 className="text-sm font-bold mb-1.5 border-b border-gray-300 pb-1">🏢 {g.name}</h2>
                   <InvoiceTable rows={g.rows} categories={categories} />
