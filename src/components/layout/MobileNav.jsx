@@ -1,7 +1,8 @@
-import { LayoutDashboard, Wallet, Building2, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Wallet, Building2, FileText, Settings, ShoppingCart } from 'lucide-react';
 
 const mobileNavItems = [
   { id: 'dashboard', label: '홈', icon: LayoutDashboard },
+  { id: 'orders', label: '주문', icon: ShoppingCart },
   { id: 'payments', label: '입출금', icon: Wallet },
   { id: 'customers', label: '업체', icon: Building2 },
   { id: 'invoices', label: '명세서', icon: FileText },

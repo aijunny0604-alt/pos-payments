@@ -1,9 +1,10 @@
-import { LayoutDashboard, Wallet, Building2, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Wallet, Building2, FileText, Settings, ShoppingCart } from 'lucide-react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard },
+  { id: 'orders', label: '주문 내역', icon: ShoppingCart },
   { id: 'payments', label: '입출금 내역', icon: Wallet },
   { id: 'customers', label: '업체별 미수', icon: Building2 },
   { id: 'invoices', label: '명세서', icon: FileText },

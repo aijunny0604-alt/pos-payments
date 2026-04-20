@@ -4,6 +4,7 @@ import { exportPaymentsExcel } from '@/lib/exportExcel';
 
 import AppLayout from '@/components/layout/AppLayout';
 import DashboardPage from '@/pages/DashboardPage';
+import OrdersPage from '@/pages/OrdersPage';
 import PaymentsPage from '@/pages/PaymentsPage';
 import CustomersPage from '@/pages/CustomersPage';
 import InvoicesPage from '@/pages/InvoicesPage';
@@ -20,7 +21,7 @@ export default function App() {
   // 라우팅
   const [currentPage, setCurrentPage] = useState(() => {
     const hash = window.location.hash.replace('#', '');
-    return ['dashboard', 'payments', 'customers', 'invoices', 'settings'].includes(hash) ? hash : 'dashboard';
+    return ['dashboard', 'orders', 'payments', 'customers', 'invoices', 'settings'].includes(hash) ? hash : 'dashboard';
   });
 
   // 데이터
@@ -64,7 +65,7 @@ export default function App() {
   useEffect(() => {
     const handler = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['dashboard', 'payments', 'customers', 'invoices', 'settings'].includes(hash)) {
+      if (['dashboard', 'orders', 'payments', 'customers', 'invoices', 'settings'].includes(hash)) {
         setCurrentPage(hash);
       }
     };
@@ -245,6 +246,10 @@ export default function App() {
           onOpenCustomer={(c) => setCustomerModal(c)}
           onOpenPayment={() => setPaymentModal({ open: true, customerId: null, recordId: null })}
         />
+      )}
+
+      {currentPage === 'orders' && (
+        <OrdersPage customers={customers} />
       )}
 
       {currentPage === 'payments' && (
