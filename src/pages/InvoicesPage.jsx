@@ -70,7 +70,8 @@ export default function InvoicesPage({ customers }) {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
 
   const handlePng = async () => {
-    if (!invoiceRef.current) return;
+    console.log('[InvoicePNG] start');
+    if (!invoiceRef.current) { alert('명세서 요소를 찾을 수 없습니다'); return; }
     try {
       const dataUrl = await toPng(invoiceRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' });
       const a = document.createElement('a');
@@ -78,20 +79,39 @@ export default function InvoicesPage({ customers }) {
       a.download = `명세서_${customerId === 'all' ? '전체' : (customerName(customerId) || '').replace(/[^a-zA-Z0-9가-힣]/g, '_')}_${date}.png`;
       a.click();
       showToast('✅ PNG 다운로드됨');
-    } catch (e) { showToast('PNG 실패: ' + e.message); }
+      console.log('[InvoicePNG] saved');
+    } catch (e) {
+      console.error('[InvoicePNG] failed:', e);
+      showToast('PNG 실패: ' + (e?.message || e));
+    }
   };
 
   const handleCopy = async () => {
-    if (!invoiceRef.current) return;
+    console.log('[InvoiceCopy] start');
+    if (!invoiceRef.current) { alert('명세서 요소를 찾을 수 없습니다'); return; }
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      showToast('❌ 이 브라우저는 클립보드 이미지 복사를 지원하지 않습니다');
+      return;
+    }
     try {
       const blob = await toBlob(invoiceRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' });
       if (!blob) throw new Error('blob 생성 실패');
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
       showToast('✅ 클립보드 복사됨 — 카톡에 붙여넣기');
-    } catch (e) { showToast('복사 실패: ' + e.message); }
+      console.log('[InvoiceCopy] ok');
+    } catch (e) {
+      console.error('[InvoiceCopy] failed:', e);
+      showToast('복사 실패: ' + (e?.message || e));
+    }
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    console.log('[InvoicePrint] start');
+    try { window.print(); } catch (e) {
+      console.error('[InvoicePrint] failed:', e);
+      alert('인쇄 실패: ' + e.message);
+    }
+  };
 
   return (
     <div className="space-y-3 max-w-3xl mx-auto">

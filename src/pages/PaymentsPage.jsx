@@ -101,6 +101,7 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
         <div className="flex items-center gap-1.5">
           <button
             onClick={async () => {
+              console.log('[PaymentsExcel] start', tab);
               try {
                 await exportFilteredExcel({
                   records: tab === 'records' ? filteredRecords : records,
@@ -108,7 +109,11 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
                   customers,
                   label: `입출금_${tab === 'records' ? '결제레코드' : '입금이력'}_${statusFilter}`,
                 });
-              } catch (e) { alert('Excel 실패: ' + e.message); }
+                console.log('[PaymentsExcel] saved');
+              } catch (e) {
+                console.error('[PaymentsExcel] failed:', e);
+                alert('Excel 실패: ' + (e?.message || e));
+              }
             }}
             className="flex items-center gap-1 h-9 px-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-bold"
             title="필터 결과 Excel"

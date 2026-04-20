@@ -91,6 +91,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
   const totalOrders = useMemo(() => orders.length, [orders]);
 
   const handleExport = async () => {
+    console.log('[Excel] export start for', customer?.name);
     setExporting(true);
     try {
       const [allRecords, allHistory, settings] = await Promise.all([
@@ -98,6 +99,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
         supabase.getPaymentHistory({}),
         supabase.getSettings(),
       ]);
+      console.log('[Excel] data loaded', { records: allRecords?.length, history: allHistory?.length });
       await exportCustomerReport({
         customer,
         records: allRecords,
@@ -105,17 +107,27 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
         settings,
         orders,
       });
+      console.log('[Excel] saved');
     } catch (e) {
-      alert('Excel 실패: ' + e.message);
+      console.error('[Excel] failed:', e);
+      alert('Excel 실패: ' + (e?.message || e) + '\n\n상세: ' + (e?.stack?.split('\n')[0] || '알 수 없음'));
     } finally { setExporting(false); }
   };
 
   const handlePrint = () => {
+    console.log('[Print] start');
     document.body.classList.add('print-customer-mode');
+    // 레이아웃/폰트 로드 대기 시간 여유 확보 (300ms)
     setTimeout(() => {
-      window.print();
-      document.body.classList.remove('print-customer-mode');
-    }, 100);
+      try {
+        window.print();
+      } catch (e) {
+        console.error('[Print] failed:', e);
+        alert('인쇄 실패: ' + e.message);
+      } finally {
+        document.body.classList.remove('print-customer-mode');
+      }
+    }, 300);
   };
 
   if (!open || !customer) return null;
@@ -128,17 +140,36 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
     >
       <style>{`
         @media print {
-          body.print-customer-mode > *:not(.customer-detail-modal) { display: none !important; }
+          body.print-customer-mode * { visibility: hidden !important; }
+          body.print-customer-mode .customer-detail-modal,
+          body.print-customer-mode .customer-detail-modal * { visibility: visible !important; }
           body.print-customer-mode .customer-detail-modal {
-            position: static !important; background: white !important; backdrop-filter: none !important;
-            display: block !important; padding: 0 !important;
+            position: absolute !important; left: 0 !important; top: 0 !important;
+            width: 100% !important; height: auto !important;
+            background: white !important; backdrop-filter: none !important;
+            padding: 0 !important; display: block !important;
+            z-index: 999999 !important;
           }
           body.print-customer-mode .customer-detail-modal > div {
-            box-shadow: none !important; border: none !important; max-height: none !important;
-            background: white !important; color: black !important; max-width: 100% !important;
+            position: static !important;
+            box-shadow: none !important;
+            border: none !important;
+            max-height: none !important;
+            max-width: 100% !important;
+            height: auto !important;
+            background: white !important;
+            color: black !important;
+            border-radius: 0 !important;
+            animation: none !important;
           }
-          body.print-customer-mode .no-print { display: none !important; }
+          body.print-customer-mode .no-print,
+          body.print-customer-mode .no-print * { visibility: hidden !important; display: none !important; }
+          body.print-customer-mode .customer-detail-modal * { color: black !important; }
           body.print-customer-mode .customer-detail-modal table { color: black !important; }
+          /* 모달 내부의 그라데이션 바/고급 효과는 인쇄 시 제거 */
+          body.print-customer-mode .animate-pulse-ring-red,
+          body.print-customer-mode .animate-modal-up,
+          body.print-customer-mode .animate-modal-backdrop { animation: none !important; }
         }
       `}</style>
       <div
