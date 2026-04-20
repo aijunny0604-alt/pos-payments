@@ -225,20 +225,40 @@ export default function SettingsPage({
       </Section>
 
       {/* 동기화 */}
-      <Section title="🔄 운영 주문 동기화" icon={RefreshCw}>
-        <p className="text-xs text-[var(--muted-foreground)] leading-relaxed mb-3">
-          운영 앱 주문을 결제 레코드로 자동 변환. 운영 DB 무영향.
+      <Section title="🔄 운영 데이터 동기화" icon={RefreshCw}>
+        <p className="text-xs text-[var(--muted-foreground)] leading-relaxed mb-2">
+          운영 앱의 <strong>주문 + 저장된 장바구니(예약)</strong>를 결제 레코드로 자동 변환. 운영 DB는 READ only.
         </p>
+        <ul className="text-[11px] text-[var(--muted-foreground)] space-y-0.5 mb-3 ml-4 list-disc">
+          <li>주문: <code className="text-[10px]">order_id</code>로 저장</li>
+          <li>장바구니: <code className="text-[10px]">CART-{'{id}'}</code>로 저장 (구분 가능)</li>
+          <li>이미 동기화된 건 스킵</li>
+          <li>업체는 이름 → 전화번호 순 매칭</li>
+        </ul>
         <button
           onClick={onSync}
           disabled={syncing}
           className="w-full py-3 rounded-lg text-sm font-bold border border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)] disabled:opacity-50"
         >
-          {syncing ? '⟳ 동기화 중...' : '🔄 지금 동기화'}
+          {syncing ? '⟳ 동기화 중...' : '🔄 전체 동기화 (주문 + 장바구니)'}
         </button>
         {syncResult && (
-          <div className="mt-2 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-xs text-green-300">
-            ✅ {syncResult.total}건 중 <strong>{syncResult.inserted}건 신규</strong>
+          <div className="mt-2 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-xs text-green-300 leading-relaxed space-y-1">
+            <div className="font-bold">✅ 총 {syncResult.total}건 처리 / <strong>{syncResult.inserted}건 신규 생성</strong></div>
+            {syncResult.ordersDetail && (
+              <div className="text-[11px] pl-2">
+                📦 주문: {syncResult.ordersDetail.total}건 → 신규 {syncResult.ordersDetail.inserted}건
+                {syncResult.ordersDetail.skippedAlreadySynced > 0 && ` · 중복 ${syncResult.ordersDetail.skippedAlreadySynced}`}
+                {syncResult.ordersDetail.skippedNoCustomer > 0 && ` · 매칭실패 ${syncResult.ordersDetail.skippedNoCustomer}`}
+              </div>
+            )}
+            {syncResult.cartsDetail && (
+              <div className="text-[11px] pl-2">
+                🛒 장바구니: {syncResult.cartsDetail.total}건 → 신규 {syncResult.cartsDetail.inserted}건
+                {syncResult.cartsDetail.skippedAlreadySynced > 0 && ` · 중복 ${syncResult.cartsDetail.skippedAlreadySynced}`}
+                {syncResult.cartsDetail.skippedNoCustomer > 0 && ` · 매칭실패 ${syncResult.cartsDetail.skippedNoCustomer}`}
+              </div>
+            )}
           </div>
         )}
       </Section>

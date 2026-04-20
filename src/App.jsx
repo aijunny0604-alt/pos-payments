@@ -131,20 +131,28 @@ export default function App() {
     return () => { supabaseClient.removeChannel(ch); };
   }, [load]);
 
-  // 동기화
+  // 동기화 (주문 + 저장된 장바구니)
   const handleSync = async () => {
     if (syncing) return;
-    if (!confirm('운영 앱 주문 → 결제 레코드 자동 생성합니다.\n\n• 운영 orders는 READ만\n• 이미 동기화된 주문은 스킵\n\n진행할까요?')) return;
+    if (!confirm('운영 앱의 주문 + 저장된 장바구니를 결제 레코드로 동기화합니다.\n\n• 운영 데이터는 READ만 (변경 없음)\n• 이미 동기화된 건은 스킵\n• 장바구니는 CART- prefix로 구분\n\n진행할까요?')) return;
     setSyncing(true); setSyncResult(null);
     try {
-      const r = await supabase.syncOrdersToPaymentRecords();
-      setSyncResult(r);
+      const r = await supabase.syncAllToPaymentRecords();
+      // 기존 포맷과 호환되도록 합산 결과 + 분리 상세 모두 전달
+      setSyncResult({
+        total: r.orders.total + r.carts.total,
+        inserted: r.totalInserted,
+        skippedAlreadySynced: r.orders.skippedAlreadySynced + r.carts.skippedAlreadySynced,
+        skippedNoCustomer: r.orders.skippedNoCustomer + r.carts.skippedNoCustomer,
+        ordersDetail: r.orders,
+        cartsDetail: r.carts,
+      });
       await load();
     } catch (e) {
       alert('동기화 실패: ' + (e.message || '알 수 없는 오류'));
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncResult(null), 12000);
+      setTimeout(() => setSyncResult(null), 15000);
     }
   };
 

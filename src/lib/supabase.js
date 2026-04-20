@@ -451,4 +451,93 @@ export const supabase = {
       throw e;
     }
   },
+
+  // ===== 저장된 장바구니 → 결제 레코드 동기화 =====
+  async syncSavedCartsToPaymentRecords() {
+    try {
+      const [carts, customers, existingRecords] = await Promise.all([
+        this.getSavedCarts().then((r) => r || []),
+        this.getCustomers(),
+        this.getPaymentRecords({}),
+      ]);
+
+      const existingCartKeys = new Set(
+        existingRecords
+          .map((r) => r.order_id)
+          .filter((id) => id && String(id).startsWith('CART-'))
+      );
+
+      const byName = new Map();
+      const byPhone = new Map();
+      for (const c of customers) {
+        if (c.name) byName.set(c.name.trim(), c);
+        if (c.phone) byPhone.set(c.phone.trim(), c);
+      }
+
+      const toInsert = [];
+      let skippedNoCustomer = 0;
+      let skippedAlreadySynced = 0;
+
+      for (const cart of carts) {
+        const cartKey = `CART-${cart.id}`;
+        if (existingCartKeys.has(cartKey)) { skippedAlreadySynced++; continue; }
+
+        const name = (cart.name || '').trim();
+        const phone = (cart.phone || '').trim();
+        let cust = null;
+        if (name) cust = byName.get(name);
+        if (!cust && phone) cust = byPhone.get(phone);
+        if (!cust) { skippedNoCustomer++; continue; }
+
+        const total = Number(cart.total || 0);
+        if (total <= 0) continue;
+
+        const supply = Math.round(total / 1.1);
+        toInsert.push({
+          order_id: cartKey,
+          customer_id: cust.id,
+          total_amount: total,
+          supply_amount: supply,
+          vat_amount: total - supply,
+          is_vat_exempt: false,
+          category: 'sales',
+          invoice_date: cart.date || (cart.created_at || '').slice(0, 10) || null,
+          due_date: cart.delivery_date || null,
+          memo: cart.memo ? `[예약] ${cart.memo}` : '[예약 장바구니]',
+        });
+      }
+
+      let inserted = 0;
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const batch = toInsert.slice(i, i + 500);
+        const result = await fetchJSON(`${SUPABASE_URL}/rest/v1/payment_records`, {
+          method: 'POST',
+          headers: headersWithReturn,
+          body: JSON.stringify(batch),
+        });
+        inserted += (result?.length || 0);
+      }
+
+      return {
+        total: carts.length,
+        inserted,
+        skippedAlreadySynced,
+        skippedNoCustomer,
+      };
+    } catch (e) {
+      console.error('syncSavedCartsToPaymentRecords:', e);
+      throw e;
+    }
+  },
+
+  // 주문 + 장바구니 모두 한 번에 동기화
+  async syncAllToPaymentRecords() {
+    const orderResult = await this.syncOrdersToPaymentRecords();
+    const cartResult = await this.syncSavedCartsToPaymentRecords();
+    return {
+      orders: orderResult,
+      carts: cartResult,
+      totalInserted: orderResult.inserted + cartResult.inserted,
+    };
+  },
 };

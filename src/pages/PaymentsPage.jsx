@@ -253,10 +253,16 @@ export default function PaymentsPage({ customers, onOpenPayment, onEditHistory, 
                         {r.invoice_issued ? '✅ 발행' : '⏳ 미발행'}
                       </span>
                     </div>
-                    <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
-                      {r.invoice_date && <>발행 {r.invoice_date}</>}
-                      {r.due_date && <> · 납기 {r.due_date}</>}
-                      {r.order_id && <> · 주문 #{r.order_id}</>}
+                    <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 flex items-center gap-1 flex-wrap">
+                      {r.invoice_date && <span>발행 {r.invoice_date}</span>}
+                      {r.due_date && <span>· 납기 {r.due_date}</span>}
+                      {r.order_id && (
+                        String(r.order_id).startsWith('CART-') ? (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[9px] font-bold">🛒 장바구니</span>
+                        ) : (
+                          <span>· 주문 #{r.order_id}</span>
+                        )
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
