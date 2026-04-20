@@ -1,15 +1,44 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toPng, toBlob } from 'html-to-image';
-import { Printer, Download, Copy } from 'lucide-react';
+import { Printer, Download, Copy, Search, X as XIcon } from 'lucide-react';
 import { DEFAULT_CATEGORIES, getCategoryInfo } from '@/lib/vatHelper';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const offsetDays = (iso, days) => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const startOfWeekISO = () => {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const monOffset = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + monOffset);
+  return d.toISOString().slice(0, 10);
+};
+const startOfMonthISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+const DATE_PRESETS = [
+  { key: 'today', label: '오늘' },
+  { key: 'yesterday', label: '어제' },
+  { key: 'thisWeek', label: '이번 주' },
+  { key: 'thisMonth', label: '이번 달' },
+  { key: 'all', label: '전체' },
+  { key: 'custom', label: '날짜 선택' },
+];
 
 export default function InvoicesPage({ customers }) {
-  const [date, setDate] = useState(todayISO());
+  const [datePreset, setDatePreset] = useState('today');
+  const [date, setDate] = useState(todayISO()); // custom 모드에서 사용
   const [customerId, setCustomerId] = useState('all');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const customerBoxRef = useRef(null);
   const [records, setRecords] = useState([]);
   const [carryover, setCarryover] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,33 +51,83 @@ export default function InvoicesPage({ customers }) {
     supabase.getSettings().then(setSettings);
   }, []);
 
+  // datePreset → 기간 계산
+  const dateRange = useMemo(() => {
+    const today = todayISO();
+    switch (datePreset) {
+      case 'today':     return { from: today, to: today, label: today };
+      case 'yesterday': { const y = offsetDays(today, -1); return { from: y, to: y, label: y }; }
+      case 'thisWeek':  return { from: startOfWeekISO(), to: today, label: `${startOfWeekISO()} ~ ${today}` };
+      case 'thisMonth': return { from: startOfMonthISO(), to: today, label: `${startOfMonthISO()} ~ ${today}` };
+      case 'all':       return { from: null, to: null, label: '전체 기간' };
+      case 'custom':    return { from: date, to: date, label: date };
+      default:          return { from: today, to: today, label: today };
+    }
+  }, [datePreset, date]);
+  // 이월 기준일 (범위 from 이전을 이월로)
+  const carryoverCutoff = dateRange.from || todayISO();
+
   useEffect(() => {
     setLoading(true);
 
     if (customerId !== 'all') {
-      // 업체 모드: 해당 업체의 "모든" 레코드 로드 → 날짜 기준으로 당월/이월 분리
-      // (오늘까지 발행일 기준) 선택일과 같거나 이후 + 발행일 미지정 = 당월(records)
-      //                        선택일 이전 & 잔금>0 = 이월(carryover)
+      // 업체 모드: 해당 업체의 모든 레코드 로드 → 날짜 기준으로 당월/이월 분리
       supabase.getPaymentRecords({ customerId })
         .then((all) => {
-          const current = all.filter((r) => !r.invoice_date || (r.invoice_date || '') >= date);
-          const prev = all.filter((r) => r.invoice_date && r.invoice_date < date && Number(r.balance) > 0);
+          const inRange = (r) => {
+            if (!dateRange.from) return true; // 전체
+            if (!r.invoice_date) return true; // 발행일 미지정은 당월로
+            return r.invoice_date >= dateRange.from && r.invoice_date <= dateRange.to;
+          };
+          const current = all.filter(inRange);
+          const prev = all.filter((r) =>
+            r.invoice_date && dateRange.from && r.invoice_date < dateRange.from && Number(r.balance) > 0
+          );
           setRecords(current);
           setCarryover(prev);
         })
         .catch((e) => { console.error('[Invoices] load failed:', e); setRecords([]); setCarryover([]); })
         .finally(() => setLoading(false));
     } else {
-      // 전체 모드: 기존 로직 (해당 일자에 세금계산서 발행된 레코드 + 이전 이월)
+      // 전체 모드: 발행일 범위 내 + 이전 이월
+      const rangeFilter = {};
+      if (dateRange.from && dateRange.to) {
+        if (dateRange.from === dateRange.to) rangeFilter.invoiceDate = dateRange.from;
+        else { rangeFilter.invoiceDateFrom = dateRange.from; rangeFilter.invoiceDateTo = dateRange.to; }
+      }
       Promise.all([
-        supabase.getPaymentRecords({ invoiceDate: date }),
-        supabase.getPaymentRecords({ hasBalance: true })
-          .then((all) => all.filter((r) => (r.invoice_date || '') < date)),
+        supabase.getPaymentRecords(rangeFilter),
+        dateRange.from
+          ? supabase.getPaymentRecords({ hasBalance: true })
+              .then((all) => all.filter((r) => (r.invoice_date || '') < dateRange.from))
+          : Promise.resolve([]),
       ]).then(([r, prev]) => { setRecords(r); setCarryover(prev); })
         .catch((e) => { console.error('[Invoices] load failed:', e); setRecords([]); setCarryover([]); })
         .finally(() => setLoading(false));
     }
-  }, [date, customerId]);
+  }, [dateRange.from, dateRange.to, customerId]);
+
+  // 업체 검색 필터 + 외부 클릭 닫기
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase().replace(/\s/g, '');
+    if (!q) return customers || [];
+    return (customers || []).filter((c) => {
+      const name = (c.name || '').toLowerCase().replace(/\s/g, '');
+      const phone = (c.phone || '').replace(/[\s-]/g, '');
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [customers, customerSearch]);
+
+  useEffect(() => {
+    if (!customerDropdownOpen) return;
+    const onDocClick = (e) => {
+      if (customerBoxRef.current && !customerBoxRef.current.contains(e.target)) {
+        setCustomerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [customerDropdownOpen]);
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || `#${id}`;
 
@@ -92,7 +171,7 @@ export default function InvoicesPage({ customers }) {
       const dataUrl = await toPng(invoiceRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' });
       const a = document.createElement('a');
       a.href = dataUrl;
-      a.download = `명세서_${customerId === 'all' ? '전체' : (customerName(customerId) || '').replace(/[^a-zA-Z0-9가-힣]/g, '_')}_${date}.png`;
+      a.download = `명세서_${customerId === 'all' ? '전체' : (customerName(customerId) || '').replace(/[^a-zA-Z0-9가-힣]/g, '_')}_${dateRange.label.replace(/[^a-zA-Z0-9가-힣~-]/g, '_')}.png`;
       a.click();
       showToast('✅ PNG 다운로드됨');
       console.log('[InvoicePNG] saved');
@@ -145,28 +224,95 @@ export default function InvoicesPage({ customers }) {
       </div>
 
       {/* 필터 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 no-print">
+      <div className="space-y-2 no-print">
+        {/* 날짜 빠른 필터 */}
         <div>
-          <label className="block text-[10px] font-semibold mb-1 text-[var(--muted-foreground)]">세금계산서 발행일</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm"
-            style={{ fontSize: '16px' }}
-          />
+          <label className="block text-[10px] font-semibold mb-1 text-[var(--muted-foreground)]">
+            발행일 범위 <span className="text-[var(--primary)] font-normal">· {dateRange.label}</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {DATE_PRESETS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setDatePreset(p.key)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border"
+                style={{
+                  background: datePreset === p.key ? 'var(--primary)' : 'var(--card)',
+                  color: datePreset === p.key ? 'var(--primary-foreground)' : 'var(--foreground)',
+                  borderColor: datePreset === p.key ? 'var(--primary)' : 'var(--border)',
+                  boxShadow: datePreset === p.key ? '0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent)' : 'none',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+            {datePreset === 'custom' && (
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs"
+                style={{ fontSize: '14px' }}
+              />
+            )}
+          </div>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold mb-1 text-[var(--muted-foreground)]">업체</label>
-          <select
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm"
-            style={{ fontSize: '16px' }}
-          >
-            <option value="all">전체 업체 (그룹별)</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name || `#${c.id}`}</option>)}
-          </select>
+
+        {/* 업체 검색 콤보 */}
+        <div ref={customerBoxRef} className="relative">
+          <label className="block text-[10px] font-semibold mb-1 text-[var(--muted-foreground)]">업체 검색</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-foreground)]" />
+            <input
+              type="text"
+              value={customerId === 'all' ? customerSearch : (customers.find((c) => c.id === customerId)?.name || '')}
+              onChange={(e) => { setCustomerSearch(e.target.value); setCustomerId('all'); setCustomerDropdownOpen(true); }}
+              onFocus={() => setCustomerDropdownOpen(true)}
+              placeholder="업체명/전화 검색 (비우면 전체)"
+              className="w-full pl-10 pr-9 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm"
+              style={{ fontSize: '16px' }}
+            />
+            {customerId !== 'all' && (
+              <button
+                onClick={() => { setCustomerId('all'); setCustomerSearch(''); setCustomerDropdownOpen(false); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[var(--secondary)]"
+                title="선택 해제"
+              >
+                <XIcon className="w-4 h-4 text-[var(--muted-foreground)]" />
+              </button>
+            )}
+          </div>
+          {customerDropdownOpen && (
+            <div
+              className="absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-xl"
+              style={{ boxShadow: '0 10px 30px -5px rgba(0,0,0,0.25)' }}
+            >
+              <button
+                onClick={() => { setCustomerId('all'); setCustomerSearch(''); setCustomerDropdownOpen(false); }}
+                className="w-full px-3 py-2 text-left text-sm font-semibold border-b border-[var(--border)] hover:bg-[var(--secondary)]"
+                style={{ color: customerId === 'all' ? 'var(--primary)' : 'var(--foreground)' }}
+              >
+                🌐 전체 업체 (그룹별)
+              </button>
+              {filteredCustomers.length === 0 ? (
+                <p className="px-3 py-4 text-xs text-center text-[var(--muted-foreground)]">일치하는 업체 없음</p>
+              ) : (
+                filteredCustomers.slice(0, 50).map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setCustomerId(c.id); setCustomerSearch(c.name || ''); setCustomerDropdownOpen(false); }}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--secondary)] border-b border-[var(--border)] last:border-0 flex items-center justify-between gap-2"
+                  >
+                    <span className="font-medium break-keep">{c.name || `#${c.id}`}</span>
+                    {c.phone && <span className="text-[11px] text-[var(--muted-foreground)] flex-shrink-0">{c.phone}</span>}
+                  </button>
+                ))
+              )}
+              {filteredCustomers.length > 50 && (
+                <p className="px-3 py-1.5 text-[10px] text-center text-[var(--muted-foreground)]">검색어를 좁혀 {filteredCustomers.length - 50}건 더 보기</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -190,9 +336,9 @@ export default function InvoicesPage({ customers }) {
             {settings?.company_phone && <p className="text-[10px] text-gray-600">{settings.company_phone}</p>}
             {settings?.company_address && <p className="text-[10px] text-gray-600 break-keep">{settings.company_address}</p>}
             <p className="text-xs text-gray-600 mt-2">
-              {customerId === 'all' ? `${date} 발송 내역 — 전체 업체` : `${customerName(customerId)} 귀하`}
+              {customerId === 'all' ? `${dateRange.label} 발송 내역 — 전체 업체` : `${customerName(customerId)} 귀하`}
             </p>
-            <p className="text-xs text-gray-600">발행일: {date}</p>
+            <p className="text-xs text-gray-600">발행일: {dateRange.label}</p>
           </header>
 
           {loading ? (
@@ -201,7 +347,7 @@ export default function InvoicesPage({ customers }) {
             <div className="text-center py-6 text-gray-600 space-y-1">
               <p className="text-sm">
                 {customerId === 'all'
-                  ? '해당 일자에 세금계산서 발행된 레코드가 없습니다.'
+                  ? '해당 기간에 세금계산서 발행된 레코드가 없습니다.'
                   : '해당 업체는 아직 결제 레코드가 없습니다.'}
               </p>
               <p className="text-xs">
