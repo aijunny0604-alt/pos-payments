@@ -209,7 +209,7 @@ export default function InvoicesPage({ customers }) {
   };
 
   return (
-    <div className="space-y-3 max-w-3xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -219,12 +219,23 @@ export default function InvoicesPage({ customers }) {
         }
       `}</style>
 
-      <div className="flex items-center justify-between gap-2 no-print">
-        <h2 className="text-base font-bold">📄 명세서 발행</h2>
+      {/* 헤더 */}
+      <div className="flex items-center justify-between gap-2 no-print mb-4">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">📄 명세서 발행</h2>
+          <p className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
+            발행일 기준으로 업체별 미수/이월을 합산하여 A4 명세서로 출력합니다
+          </p>
+        </div>
       </div>
 
+      {/* 2-column: 좌측 필터+액션 (sticky) / 우측 명세서 프리뷰 */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5 items-start">
+
+      {/* 좌측 — 필터 + 액션 (sticky) */}
+      <aside className="space-y-4 lg:sticky lg:top-4 no-print">
       {/* 필터 */}
-      <div className="space-y-2 no-print">
+      <div className="space-y-3 p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
         {/* 날짜 빠른 필터 */}
         <div>
           <label className="block text-[10px] font-semibold mb-1 text-[var(--muted-foreground)]">
@@ -317,14 +328,47 @@ export default function InvoicesPage({ customers }) {
       </div>
 
       {/* 액션 */}
-      <div className="grid grid-cols-3 gap-2 no-print">
-        <ActionBtn icon={Printer} onClick={handlePrint} variant="default">인쇄</ActionBtn>
-        <ActionBtn icon={Download} onClick={handlePng} variant="primary">PNG</ActionBtn>
-        <ActionBtn icon={Copy} onClick={handleCopy} variant="success">복사</ActionBtn>
+      <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">발행 / 출력</p>
+        <ActionBtn icon={Download} onClick={handlePng} variant="primary" block>PNG 다운로드</ActionBtn>
+        <div className="grid grid-cols-2 gap-2">
+          <ActionBtn icon={Printer} onClick={handlePrint} variant="default">인쇄</ActionBtn>
+          <ActionBtn icon={Copy} onClick={handleCopy} variant="success">카톡 복사</ActionBtn>
+        </div>
       </div>
 
-      {/* 명세서 미리보기 */}
-      <div className="border border-[var(--border)] rounded-xl overflow-hidden">
+      {/* 빠른 요약 카드 (선택된 조건의 집계) */}
+      <div className="p-4 rounded-2xl border border-[var(--border)] bg-gradient-to-br from-[var(--secondary)] to-[var(--card)]">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)] mb-2">요약</p>
+        <div className="space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <span className="text-[var(--muted-foreground)]">발행 건수</span>
+            <span className="font-bold tabular-nums">{summary.count}건</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted-foreground)]">당기 합계</span>
+            <span className="font-bold tabular-nums">{fmt(summary.total)}원</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted-foreground)]">당기 미수</span>
+            <span className="font-bold tabular-nums text-red-500">{fmt(summary.balance)}원</span>
+          </div>
+          {carryoverTotal > 0 && (
+            <div className="flex justify-between pt-1 mt-1 border-t border-[var(--border)]">
+              <span className="text-[var(--muted-foreground)]">이월 미수</span>
+              <span className="font-bold tabular-nums text-orange-400">{fmt(carryoverTotal)}원</span>
+            </div>
+          )}
+          <div className="flex justify-between pt-2 mt-1 border-t-2 border-[var(--primary)]/30">
+            <span className="font-bold">💰 총 미수</span>
+            <span className="font-black text-base tabular-nums text-red-500">{fmt(grandTotal)}원</span>
+          </div>
+        </div>
+      </div>
+      </aside>
+
+      {/* 우측 — 명세서 미리보기 */}
+      <section className="border border-[var(--border)] rounded-2xl overflow-hidden shadow-lg">
         <div
           ref={invoiceRef}
           className="invoice-print bg-white text-black p-5"
@@ -376,10 +420,13 @@ export default function InvoicesPage({ customers }) {
 
               {/* 전월 이월 */}
               {carryoverTotal > 0 && (
-                <section className="mt-3 p-2 bg-gray-100 rounded text-xs">
-                  <div className="flex justify-between font-semibold">
-                    <span>📅 전월 이월 미수 ({carryover.length}건)</span>
-                    <span className="text-red-600">{fmt(carryoverTotal)}원</span>
+                <section className="mt-3 p-3 rounded-lg text-xs" style={{ background: 'linear-gradient(135deg, #fef2f2, #fff7ed)', border: '1px solid #fecaca' }}>
+                  <div className="flex justify-between items-center font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-base">📅</span>
+                      <span>전월 이월 미수 ({carryover.length}건)</span>
+                    </span>
+                    <span className="text-red-600 text-sm font-bold tabular-nums">{fmt(carryoverTotal)}원</span>
                   </div>
                 </section>
               )}
@@ -422,7 +469,8 @@ export default function InvoicesPage({ customers }) {
             </>
           )}
         </div>
-      </div>
+      </section>
+      </div>{/* end 2-column grid */}
 
       {toast && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black text-white text-xs font-semibold shadow-2xl z-50 no-print">
@@ -433,15 +481,18 @@ export default function InvoicesPage({ customers }) {
   );
 }
 
-function ActionBtn({ icon: Icon, onClick, children, variant }) {
+function ActionBtn({ icon: Icon, onClick, children, variant, block }) {
   const map = {
-    default: 'border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]',
-    primary: 'bg-[var(--primary)] text-white',
-    success: 'bg-green-600 text-white',
+    default: 'border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--secondary)]',
+    primary: 'bg-[var(--primary)] text-white hover:brightness-110 shadow-md',
+    success: 'bg-green-600 text-white hover:bg-green-500 shadow-md',
   };
   return (
-    <button onClick={onClick} className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold ${map[variant]}`}>
-      <Icon className="w-4 h-4" />
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-all ${block ? 'w-full py-3 text-sm' : 'py-2.5'} ${map[variant]}`}
+    >
+      <Icon className={`${block ? 'w-5 h-5' : 'w-4 h-4'}`} />
       {children}
     </button>
   );
