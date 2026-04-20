@@ -222,7 +222,10 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
             <div className="space-y-2">
               {outstandingRecords.length === 0 ? (
                 <p className="text-sm text-center text-[var(--muted-foreground)] py-6">미수 없음 👍</p>
-              ) : outstandingRecords.map((r) => (
+              ) : outstandingRecords.map((r) => {
+                const matchedOrder = r.order_id ? orders.find((o) => String(o.id) === String(r.order_id)) : null;
+                const titleDate = matchedOrder?.created_at ? dateKST(matchedOrder.created_at) : null;
+                return (
                 <div
                   key={r.id}
                   className={`p-3 rounded-lg bg-[var(--secondary)] text-sm space-y-1 ${r.order_id ? 'cursor-pointer hover:bg-[var(--accent)] hover:ring-1 hover:ring-[var(--primary)]/40 transition-colors' : ''}`}
@@ -232,7 +235,13 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold break-words flex items-center gap-1.5">
-                        {r.invoice_number ? `#${r.invoice_number}` : `레코드 #${r.id}`}
+                        {titleDate ? (
+                          <>📅 {titleDate} 주문</>
+                        ) : r.invoice_number ? (
+                          `#${r.invoice_number}`
+                        ) : (
+                          `레코드 #${r.id}`
+                        )}
                         {r.order_id && <span className="text-[10px] opacity-70">🔍</span>}
                       </div>
                       <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
@@ -295,7 +304,8 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
