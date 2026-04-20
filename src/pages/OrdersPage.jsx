@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ShoppingCart, Search, RefreshCw, FileText, Calendar, X, Eye,
   Receipt, Calculator, RotateCcw, ChevronDown, Tag, Phone, User, Wallet,
+  CheckCircle2, CreditCard, Banknote, Landmark, Notebook, CircleDollarSign,
 } from 'lucide-react';
 import { supabase, supabaseClient } from '@/lib/supabase';
 import {
@@ -18,6 +19,27 @@ const DATE_FILTERS = [
   { key: 'all', label: '전체' },
 ];
 
+const PAYMENT_METHODS = [
+  { key: 'card', label: '카드', emoji: '💳', Icon: CreditCard, color: '#3b82f6' },
+  { key: 'cash', label: '현금', emoji: '💵', Icon: Banknote, color: '#22c55e' },
+  { key: 'transfer', label: '계좌이체', emoji: '🏦', Icon: Landmark, color: '#a855f7' },
+  { key: 'other', label: '기타', emoji: '📝', Icon: Notebook, color: '#64748b' },
+];
+const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.key, m]));
+const MANUAL_PAID_KEY = 'pos-payments.manual-paid-orders.v1';
+
+function loadManualPaid() {
+  try {
+    const raw = localStorage.getItem(MANUAL_PAID_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch { return {}; }
+}
+function saveManualPaid(obj) {
+  try { localStorage.setItem(MANUAL_PAID_KEY, JSON.stringify(obj)); } catch {}
+}
+
 export default function OrdersPage({ customers = [] }) {
   const [orders, setOrders] = useState([]);
   const [payments, setPayments] = useState([]); // payment_records (for 결제 상태 뱃지)
@@ -27,9 +49,26 @@ export default function OrdersPage({ customers = [] }) {
   const [dateFilter, setDateFilter] = useState('today');
   const [customDate, setCustomDate] = useState(getTodayKST());
   const [priceTypeFilter, setPriceTypeFilter] = useState('all'); // all | wholesale | consumer
-  const [paymentFilter, setPaymentFilter] = useState('all'); // all | paid | unpaid | unsynced
+  const [paymentFilter, setPaymentFilter] = useState('all'); // all | paid | unpaid | unsynced | manual
   const [detail, setDetail] = useState(null); // 선택 주문
   const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [manualPaid, setManualPaid] = useState(() => loadManualPaid()); // { [order_id]: { method, paidAt } }
+  const [methodPicker, setMethodPicker] = useState(null); // 결제수단 선택창 열린 주문 id
+
+  // localStorage sync
+  useEffect(() => { saveManualPaid(manualPaid); }, [manualPaid]);
+
+  const setPaid = (id, method) => {
+    setManualPaid((prev) => ({ ...prev, [id]: { method, paidAt: new Date().toISOString() } }));
+    setMethodPicker(null);
+  };
+  const clearPaid = (id) => {
+    setManualPaid((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
 
   const load = async () => {
     setRefreshing(true);
@@ -96,9 +135,14 @@ export default function OrdersPage({ customers = [] }) {
       if (priceTypeFilter !== 'all' && o.price_type !== priceTypeFilter) return false;
       if (paymentFilter !== 'all') {
         const pr = paymentByOrderId.get(String(o.id));
+        const isManual = !!manualPaid[o.id];
+        if (paymentFilter === 'manual' && !isManual) return false;
         if (paymentFilter === 'unsynced' && pr) return false;
-        if (paymentFilter === 'paid' && (!pr || pr.payment_status !== 'paid')) return false;
-        if (paymentFilter === 'unpaid' && (!pr || pr.payment_status === 'paid')) return false;
+        if (paymentFilter === 'paid' && !(isManual || (pr && pr.payment_status === 'paid'))) return false;
+        if (paymentFilter === 'unpaid') {
+          if (isManual) return false;
+          if (!pr || pr.payment_status === 'paid') return false;
+        }
       }
       if (!q) return true;
       const id = String(o.id || '').toLowerCase();
@@ -108,7 +152,7 @@ export default function OrdersPage({ customers = [] }) {
       const items = (o.items || []).map((i) => (i.name || '').toLowerCase().replace(/\s/g, '')).join(' ');
       return id.includes(q) || name.includes(q) || phone.includes(q) || memo.includes(q) || items.includes(q);
     });
-  }, [orders, dateFilter, customDate, search, priceTypeFilter, paymentFilter, paymentByOrderId]);
+  }, [orders, dateFilter, customDate, search, priceTypeFilter, paymentFilter, paymentByOrderId, manualPaid]);
 
   // 집계
   const stats = useMemo(() => {
@@ -117,15 +161,22 @@ export default function OrdersPage({ customers = [] }) {
     const net = total - returned;
     const supply = calcExVat(net);
     const vat = net - supply;
-    let paidCount = 0, unpaidCount = 0, unsyncedCount = 0;
+    let paidCount = 0, unpaidCount = 0, unsyncedCount = 0, manualCount = 0;
+    const methodAgg = { card: 0, cash: 0, transfer: 0, other: 0 };
     for (const o of filtered) {
       const pr = paymentByOrderId.get(String(o.id));
+      const manual = manualPaid[o.id];
+      if (manual) {
+        manualCount++;
+        const amt = Number(o.total || o.total_amount || 0) - Number(o.total_returned || 0);
+        if (methodAgg[manual.method] !== undefined) methodAgg[manual.method] += amt;
+      }
       if (!pr) unsyncedCount++;
       else if (pr.payment_status === 'paid') paidCount++;
       else unpaidCount++;
     }
-    return { total, returned, net, supply, vat, paidCount, unpaidCount, unsyncedCount };
-  }, [filtered, paymentByOrderId]);
+    return { total, returned, net, supply, vat, paidCount, unpaidCount, unsyncedCount, manualCount, methodAgg };
+  }, [filtered, paymentByOrderId, manualPaid]);
 
   const filterLabel = () => DATE_FILTERS.find((f) => f.key === dateFilter)?.label || '전체';
 
@@ -215,11 +266,34 @@ export default function OrdersPage({ customers = [] }) {
           </div>
 
           {/* 결제 상태 요약 */}
-          <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
             <StatusPill label="✅ 결제완료" value={`${stats.paidCount}건`} active={paymentFilter === 'paid'} onClick={() => setPaymentFilter((p) => (p === 'paid' ? 'all' : 'paid'))} color="#22c55e" />
+            <StatusPill label="💰 수동 완불" value={`${stats.manualCount}건`} active={paymentFilter === 'manual'} onClick={() => setPaymentFilter((p) => (p === 'manual' ? 'all' : 'manual'))} color="#10b981" />
             <StatusPill label="⏳ 미수" value={`${stats.unpaidCount}건`} active={paymentFilter === 'unpaid'} onClick={() => setPaymentFilter((p) => (p === 'unpaid' ? 'all' : 'unpaid'))} color="#f59e0b" />
             <StatusPill label="📥 미동기화" value={`${stats.unsyncedCount}건`} active={paymentFilter === 'unsynced'} onClick={() => setPaymentFilter((p) => (p === 'unsynced' ? 'all' : 'unsynced'))} color="#64748b" />
           </div>
+
+          {/* 결제수단별 합계 (수동 완불 집계) */}
+          {stats.manualCount > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              {PAYMENT_METHODS.map((m) => (
+                <div
+                  key={m.key}
+                  className="rounded-lg px-2 py-1.5 border text-[11px] flex items-center gap-1.5"
+                  style={{
+                    background: stats.methodAgg[m.key] > 0 ? `color-mix(in srgb, ${m.color} 10%, var(--card))` : 'var(--card)',
+                    borderColor: stats.methodAgg[m.key] > 0 ? `color-mix(in srgb, ${m.color} 40%, var(--border))` : 'var(--border)',
+                  }}
+                >
+                  <span>{m.emoji}</span>
+                  <span className="text-[var(--muted-foreground)] flex-shrink-0">{m.label}</span>
+                  <span className="ml-auto font-semibold" style={{ color: stats.methodAgg[m.key] > 0 ? m.color : 'var(--muted-foreground)' }}>
+                    {formatPrice(stats.methodAgg[m.key])}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* 가격 타입 필터 */}
           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -283,7 +357,12 @@ export default function OrdersPage({ customers = [] }) {
                 order={o}
                 payment={paymentByOrderId.get(String(o.id))}
                 customer={customerByName.get((o.customer_name || '').toLowerCase().replace(/\s/g, ''))}
+                manualInfo={manualPaid[o.id] || null}
+                pickerOpen={methodPicker === o.id}
                 onOpen={() => openDetail(o)}
+                onOpenPicker={() => setMethodPicker((p) => (p === o.id ? null : o.id))}
+                onSelectMethod={(key) => setPaid(o.id, key)}
+                onClearPaid={() => clearPaid(o.id)}
               />
             ))}
           </div>
@@ -296,6 +375,9 @@ export default function OrdersPage({ customers = [] }) {
           order={detail}
           payment={paymentByOrderId.get(String(detail.id))}
           customer={customerByName.get((detail.customer_name || '').toLowerCase().replace(/\s/g, ''))}
+          manualInfo={manualPaid[detail.id] || null}
+          onSelectMethod={(key) => setPaid(detail.id, key)}
+          onClearPaid={() => clearPaid(detail.id)}
           onClose={closeDetail}
         />
       )}
@@ -365,113 +447,236 @@ function PaymentBadge({ payment }) {
   );
 }
 
-function OrderCard({ order, payment, customer, onOpen }) {
+function OrderCard({ order, payment, customer, manualInfo, pickerOpen, onOpen, onOpenPicker, onSelectMethod, onClearPaid }) {
   const items = order.items || [];
   const qtySum = items.reduce((s, i) => s + Number(i.quantity || 0), 0);
   const total = Number(order.total || order.total_amount || 0);
   const returned = Number(order.total_returned || 0);
   const isBlacklist = customer?.is_blacklist;
+  const isPaid = !!manualInfo;
+  const method = isPaid ? METHOD_MAP[manualInfo.method] : null;
 
   return (
-    <button
-      onClick={onOpen}
-      className="text-left rounded-xl p-4 border bg-[var(--card)] border-[var(--border)] hover:border-emerald-500/50 transition-colors relative overflow-hidden"
+    <div
+      className="text-left rounded-xl p-4 border relative overflow-hidden transition-colors"
       style={{
-        background: isBlacklist
-          ? 'color-mix(in srgb, var(--destructive) 6%, var(--card))'
-          : 'var(--card)',
-        borderColor: isBlacklist ? 'var(--destructive)' : 'var(--border)',
+        background: isPaid
+          ? 'color-mix(in srgb, #10b981 10%, var(--card))'
+          : isBlacklist
+            ? 'color-mix(in srgb, var(--destructive) 6%, var(--card))'
+            : 'var(--card)',
+        borderColor: isPaid
+          ? '#10b981'
+          : isBlacklist
+            ? 'var(--destructive)'
+            : 'var(--border)',
+        boxShadow: isPaid ? '0 0 0 1px rgba(16, 185, 129, 0.4), 0 4px 12px rgba(16, 185, 129, 0.12)' : 'none',
       }}
     >
-      {isBlacklist && <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />}
+      {/* 상단 액센트 바 */}
+      {isPaid ? (
+        <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: 'linear-gradient(90deg,#10b981,#34d399)' }} />
+      ) : isBlacklist ? (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />
+      ) : null}
 
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-            <span className="text-base flex-shrink-0">{isBlacklist ? '🚫' : '👤'}</span>
-            <span
-              className="font-bold text-sm sm:text-base break-keep leading-snug min-w-0"
-              style={{ color: isBlacklist ? 'var(--destructive)' : 'var(--foreground)' }}
-            >
-              {order.customer_name || '고객 미지정'}
-            </span>
-            <span
-              className="px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
-              style={{
-                background: order.price_type === 'wholesale' ? 'rgba(59,130,246,0.15)' : 'rgba(168,85,247,0.15)',
-                color: order.price_type === 'wholesale' ? '#60a5fa' : '#c084fc',
-              }}
-            >
-              {order.price_type === 'wholesale' ? '도매' : '소비자'}
-            </span>
+      {/* 완불 리본 */}
+      {isPaid && (
+        <div
+          className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md"
+          style={{ background: '#10b981', color: 'white' }}
+        >
+          <CheckCircle2 className="w-3 h-3" />
+          완불 {method?.emoji}
+        </div>
+      )}
+
+      <button
+        onClick={onOpen}
+        className="block w-full text-left"
+      >
+        <div className="flex items-start justify-between gap-2 mb-2" style={{ paddingRight: isPaid ? '72px' : '0' }}>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+              <span className="text-base flex-shrink-0">{isBlacklist ? '🚫' : '👤'}</span>
+              <span
+                className="font-bold text-sm sm:text-base break-keep leading-snug min-w-0"
+                style={{ color: isBlacklist ? 'var(--destructive)' : 'var(--foreground)' }}
+              >
+                {order.customer_name || '고객 미지정'}
+              </span>
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
+                style={{
+                  background: order.price_type === 'wholesale' ? 'rgba(59,130,246,0.15)' : 'rgba(168,85,247,0.15)',
+                  color: order.price_type === 'wholesale' ? '#60a5fa' : '#c084fc',
+                }}
+              >
+                {order.price_type === 'wholesale' ? '도매' : '소비자'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--muted-foreground)]">
+              <span className="truncate">{String(order.id).replace(/^ORD-/, '')}</span>
+              <span className="flex items-center gap-0.5 flex-shrink-0">
+                <Calendar className="w-3 h-3" />
+                {formatDateTime(order.created_at)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--muted-foreground)]">
-            <span className="truncate">{String(order.id).replace(/^ORD-/, '')}</span>
-            <span className="flex items-center gap-0.5 flex-shrink-0">
-              <Calendar className="w-3 h-3" />
-              {formatDateTime(order.created_at)}
-            </span>
+          <div className="text-right flex-shrink-0">
+            <p
+              className="font-bold text-lg sm:text-xl leading-tight"
+              style={{ color: isPaid ? '#059669' : '#10b981' }}
+            >
+              {formatPrice(total - returned)}원
+            </p>
+            <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">
+              공급가 {formatPrice(calcExVat(total - returned))}원
+            </p>
           </div>
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="font-bold text-lg sm:text-xl leading-tight text-emerald-400">
-            {formatPrice(total - returned)}원
+
+        <div className="rounded-lg p-2 mb-2 bg-[var(--muted)]">
+          <p className="text-[11px] break-keep leading-snug">
+            {items.slice(0, 3).map((it, i) => (
+              <span key={i}>
+                {it.name}<span className="text-[var(--muted-foreground)]">({it.quantity})</span>{i < Math.min(items.length - 1, 2) ? ', ' : ''}
+              </span>
+            ))}
+            {items.length > 3 && (
+              <span className="text-[var(--muted-foreground)]"> 외 {items.length - 3}건</span>
+            )}
           </p>
           <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">
-            공급가 {formatPrice(calcExVat(total - returned))}원
+            {items.length}종 / {qtySum}개
           </p>
         </div>
-      </div>
 
-      <div className="rounded-lg p-2 mb-2 bg-[var(--muted)]">
-        <p className="text-[11px] break-keep leading-snug">
-          {items.slice(0, 3).map((it, i) => (
-            <span key={i}>
-              {it.name}<span className="text-[var(--muted-foreground)]">({it.quantity})</span>{i < Math.min(items.length - 1, 2) ? ', ' : ''}
-            </span>
-          ))}
-          {items.length > 3 && (
-            <span className="text-[var(--muted-foreground)]"> 외 {items.length - 3}건</span>
-          )}
-        </p>
-        <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">
-          {items.length}종 / {qtySum}개
-        </p>
-      </div>
+        {returned > 0 && (
+          <div className="text-[11px] px-2 py-1 rounded mb-1.5 flex items-center gap-1 bg-amber-500/10 text-amber-400">
+            <RotateCcw className="w-3 h-3" />
+            반품 -{formatPrice(returned)}원
+          </div>
+        )}
 
-      {returned > 0 && (
-        <div className="text-[11px] px-2 py-1 rounded mb-1.5 flex items-center gap-1 bg-amber-500/10 text-amber-400">
-          <RotateCcw className="w-3 h-3" />
-          반품 -{formatPrice(returned)}원
-        </div>
-      )}
+        {order.memo && (
+          <div className="text-[11px] px-2 py-1 rounded mb-1.5 flex items-center gap-1 bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <FileText className="w-3 h-3 flex-shrink-0" />
+            <span className="break-keep leading-snug line-clamp-2">{order.memo}</span>
+          </div>
+        )}
+      </button>
 
-      {order.memo && (
-        <div className="text-[11px] px-2 py-1 rounded mb-1.5 flex items-center gap-1 bg-sky-500/10 text-sky-400 border border-sky-500/20">
-          <FileText className="w-3 h-3 flex-shrink-0" />
-          <span className="break-keep leading-snug line-clamp-2">{order.memo}</span>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between pt-1">
-        <PaymentBadge payment={payment} />
-        {payment && Number(payment.balance) > 0 && (
-          <span className="text-[11px] text-orange-400 font-semibold">
-            잔금 {formatPrice(payment.balance)}원
+      {/* 완불 상세 배너 (수동 체크된 경우) */}
+      {isPaid && (
+        <div
+          className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 mb-2 border text-[11px]"
+          style={{
+            background: 'color-mix(in srgb, #10b981 14%, transparent)',
+            borderColor: 'color-mix(in srgb, #10b981 40%, var(--border))',
+          }}
+        >
+          <span className="font-semibold flex items-center gap-1" style={{ color: '#059669' }}>
+            {method?.emoji} {method?.label} 결제
           </span>
+          <span className="text-[var(--muted-foreground)]">
+            {formatDateTime(manualInfo.paidAt)}
+          </span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <PaymentBadge payment={payment} />
+          {payment && !isPaid && Number(payment.balance) > 0 && (
+            <span className="text-[11px] text-orange-400 font-semibold">
+              잔금 {formatPrice(payment.balance)}원
+            </span>
+          )}
+        </div>
+
+        {/* 완불 액션 */}
+        {isPaid ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenPicker(); }}
+              className="px-2 py-1 rounded-md text-[11px] font-medium border"
+              style={{
+                borderColor: 'color-mix(in srgb, #10b981 40%, var(--border))',
+                color: '#059669',
+                background: 'color-mix(in srgb, #10b981 8%, transparent)',
+              }}
+            >
+              수단 변경
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onClearPaid(); }}
+              className="px-2 py-1 rounded-md text-[11px] font-medium border text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              style={{ borderColor: 'var(--border)' }}
+              title="완불 해제"
+            >
+              해제
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenPicker(); }}
+            className="px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 border transition-colors hover:bg-emerald-500/10"
+            style={{ borderColor: '#10b981', color: '#10b981' }}
+          >
+            <CircleDollarSign className="w-3.5 h-3.5" />
+            완불 체크
+          </button>
         )}
       </div>
-    </button>
+
+      {/* 결제수단 선택 인라인 패널 */}
+      {pickerOpen && (
+        <div
+          className="mt-2 p-2 rounded-lg border"
+          style={{
+            background: 'color-mix(in srgb, #10b981 6%, var(--card))',
+            borderColor: 'color-mix(in srgb, #10b981 35%, var(--border))',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-[10px] text-[var(--muted-foreground)] mb-1.5">결제 수단 선택</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {PAYMENT_METHODS.map((m) => {
+              const selected = manualInfo?.method === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={() => onSelectMethod(m.key)}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors"
+                  style={{
+                    background: selected ? m.color : 'var(--card)',
+                    color: selected ? 'white' : m.color,
+                    borderColor: selected ? m.color : `color-mix(in srgb, ${m.color} 30%, var(--border))`,
+                  }}
+                >
+                  <span>{m.emoji}</span>
+                  {m.label}
+                  {selected && <CheckCircle2 className="w-3 h-3 ml-auto" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-function OrderDetailModal({ order, payment, customer, onClose }) {
+function OrderDetailModal({ order, payment, customer, manualInfo, onSelectMethod, onClearPaid, onClose }) {
   const items = order.items || [];
   const total = Number(order.total || order.total_amount || 0);
   const returned = Number(order.total_returned || 0);
   const net = total - returned;
   const supply = calcExVat(net);
   const vat = net - supply;
+  const isPaid = !!manualInfo;
+  const method = isPaid ? METHOD_MAP[manualInfo.method] : null;
 
   return (
     <div
@@ -528,7 +733,13 @@ function OrderDetailModal({ order, payment, customer, onClose }) {
           </div>
 
           {/* 결제 상태 */}
-          <div className="rounded-xl p-3 border border-[var(--border)]">
+          <div
+            className="rounded-xl p-3 border"
+            style={{
+              borderColor: isPaid ? '#10b981' : 'var(--border)',
+              background: isPaid ? 'color-mix(in srgb, #10b981 8%, var(--card))' : 'transparent',
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] text-[var(--muted-foreground)] flex items-center gap-1">
                 <Wallet className="w-3 h-3" />
@@ -537,7 +748,7 @@ function OrderDetailModal({ order, payment, customer, onClose }) {
               <PaymentBadge payment={payment} />
             </div>
             {payment ? (
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center mb-2">
                 <div>
                   <div className="text-[10px] text-[var(--muted-foreground)]">청구</div>
                   <div className="font-bold text-sm">{formatPrice(payment.total_amount)}원</div>
@@ -552,10 +763,55 @@ function OrderDetailModal({ order, payment, customer, onClose }) {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-[var(--muted-foreground)]">
+              <p className="text-xs text-[var(--muted-foreground)] mb-2">
                 결제 레코드가 아직 생성되지 않았습니다. 설정 → 동기화 실행 시 자동 생성됩니다.
               </p>
             )}
+
+            {/* 수동 완불 체크 영역 */}
+            <div className="pt-2 mt-1 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: isPaid ? '#059669' : 'var(--foreground)' }}>
+                  <CircleDollarSign className="w-3.5 h-3.5" />
+                  수동 완불 체크
+                </p>
+                {isPaid && (
+                  <button
+                    onClick={onClearPaid}
+                    className="text-[11px] px-2 py-0.5 rounded border text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    해제
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {PAYMENT_METHODS.map((m) => {
+                  const selected = manualInfo?.method === m.key;
+                  return (
+                    <button
+                      key={m.key}
+                      onClick={() => onSelectMethod(m.key)}
+                      className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-md text-xs font-medium border transition-colors"
+                      style={{
+                        background: selected ? m.color : 'var(--card)',
+                        color: selected ? 'white' : m.color,
+                        borderColor: selected ? m.color : `color-mix(in srgb, ${m.color} 30%, var(--border))`,
+                      }}
+                    >
+                      <span className="text-base leading-none">{m.emoji}</span>
+                      <span>{m.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {isPaid && (
+                <p className="mt-2 text-[11px] text-[var(--muted-foreground)]">
+                  <span className="font-semibold" style={{ color: '#059669' }}>{method?.emoji} {method?.label} 결제</span>
+                  {' · '}{formatDateTime(manualInfo.paidAt)}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* 품목 */}
