@@ -46,6 +46,14 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
     setManualPaid((p) => { const n = { ...p }; delete n[String(id)]; return n; });
   };
 
+  // ESC 키로 닫기
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape' && !orderDetail) onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose, orderDetail]);
+
   useEffect(() => {
     if (!open || !customer) return;
     setLoading(true);
@@ -257,7 +265,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           {loading && <p className="text-sm text-center text-[var(--muted-foreground)] py-6">로딩...</p>}
 
           {!loading && tab === 'outstanding' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {outstandingRecords.length === 0 ? (
                 <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">미수 없음 👍</p>
               ) : outstandingRecords.map((r, idx) => {
@@ -352,7 +360,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           )}
 
           {!loading && tab === 'payments' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {history.length === 0 ? (
                 <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">입금 내역 없음</p>
               ) : history.map((h, idx) => (
@@ -387,7 +395,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           )}
 
           {!loading && tab === 'orders' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {orders.length === 0 ? (
                 <p className="col-span-full text-sm text-center text-[var(--muted-foreground)] py-12">주문 내역 없음</p>
               ) : orders.slice(0, 50).map((o, idx) => {
@@ -524,11 +532,14 @@ function StatBox({ label, value, unit, color }) {
       className="p-3 rounded-xl border transition-all hover:-translate-y-0.5"
       style={{ background: c.bg, borderColor: c.border, boxShadow: c.glow }}
     >
-      <div className="text-[10px] text-[var(--muted-foreground)] break-keep font-medium">{label}</div>
-      <div className="font-bold text-base sm:text-lg break-all leading-tight mt-0.5" style={{ color: c.text }}>
+      <div className="text-[10px] text-[var(--muted-foreground)] break-keep font-medium uppercase tracking-wider">{label}</div>
+      <div
+        className="font-black text-lg sm:text-xl lg:text-2xl break-all leading-tight mt-1"
+        style={{ color: c.text, textShadow: `0 0 20px ${c.text}40` }}
+      >
         {value}
       </div>
-      <div className="text-[9px] text-[var(--muted-foreground)]">{unit}</div>
+      <div className="text-[10px] text-[var(--muted-foreground)] mt-0.5">{unit}</div>
     </div>
   );
 }

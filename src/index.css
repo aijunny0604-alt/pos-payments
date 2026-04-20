@@ -125,6 +125,17 @@ html, body {
 .animate-modal-up { animation: modal-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .animate-modal-down { animation: modal-slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Accessibility: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-modal-backdrop,
+  .animate-modal-up,
+  .animate-modal-down {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  * { transition-duration: 0.01ms !important; }
+}
+
 /* Modal fullscreen transition - premium spring easing */
 .modal-fs-transition {
   transition:
