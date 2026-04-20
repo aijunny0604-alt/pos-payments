@@ -26,9 +26,9 @@ const PAYMENT_METHODS = [
   { key: 'other', label: '기타', emoji: '📝', Icon: Notebook, color: '#64748b' },
 ];
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.key, m]));
-const MANUAL_PAID_KEY = 'pos-payments.manual-paid-orders.v1';
+export const MANUAL_PAID_KEY = 'pos-payments.manual-paid-orders.v1';
 
-function loadManualPaid() {
+export function loadManualPaid() {
   try {
     const raw = localStorage.getItem(MANUAL_PAID_KEY);
     if (!raw) return {};
@@ -36,7 +36,7 @@ function loadManualPaid() {
     return obj && typeof obj === 'object' ? obj : {};
   } catch { return {}; }
 }
-function saveManualPaid(obj) {
+export function saveManualPaid(obj) {
   try { localStorage.setItem(MANUAL_PAID_KEY, JSON.stringify(obj)); } catch {}
 }
 
@@ -417,7 +417,7 @@ function StatusPill({ label, value, active, onClick, color }) {
   );
 }
 
-function PaymentBadge({ payment }) {
+export function PaymentBadge({ payment }) {
   if (!payment) {
     return (
       <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30">
@@ -668,7 +668,7 @@ function OrderCard({ order, payment, customer, manualInfo, pickerOpen, onOpen, o
   );
 }
 
-function OrderDetailModal({ order, payment, customer, manualInfo, onSelectMethod, onClearPaid, onClose }) {
+export function OrderDetailModal({ order, payment, customer, manualInfo, onSelectMethod, onClearPaid, onClose }) {
   const items = order.items || [];
   const total = Number(order.total || order.total_amount || 0);
   const returned = Number(order.total_returned || 0);

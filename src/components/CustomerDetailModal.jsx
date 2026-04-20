@@ -2,6 +2,11 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { exportCustomerReport } from '@/lib/exportExcel';
 import { FileSpreadsheet, Printer, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  OrderDetailModal as OrderDetailPopup,
+  loadManualPaid,
+  saveManualPaid,
+} from '@/pages/OrdersPage';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -18,6 +23,28 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
   const [loading, setLoading] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [exporting, setExporting] = useState(false);
+
+  // 주문 상세 팝업
+  const [orderDetail, setOrderDetail] = useState(null);
+  const [manualPaid, setManualPaid] = useState(() => loadManualPaid());
+  useEffect(() => { saveManualPaid(manualPaid); }, [manualPaid]);
+
+  const openOrderDetail = async (orderId) => {
+    if (!orderId) return;
+    const existing = orders.find((o) => String(o.id) === String(orderId));
+    if (existing) { setOrderDetail(existing); return; }
+    const o = await supabase.getOrderById(orderId);
+    if (o) setOrderDetail(o);
+  };
+
+  const setPaid = (id, method) => {
+    if (!id || !method) return;
+    setManualPaid((p) => ({ ...p, [String(id)]: { method, paidAt: new Date().toISOString() } }));
+  };
+  const clearPaid = (id) => {
+    if (!id) return;
+    setManualPaid((p) => { const n = { ...p }; delete n[String(id)]; return n; });
+  };
 
   useEffect(() => {
     if (!open || !customer) return;
@@ -196,11 +223,17 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
               {outstandingRecords.length === 0 ? (
                 <p className="text-sm text-center text-[var(--muted-foreground)] py-6">미수 없음 👍</p>
               ) : outstandingRecords.map((r) => (
-                <div key={r.id} className="p-3 rounded-lg bg-[var(--secondary)] text-sm space-y-1">
+                <div
+                  key={r.id}
+                  className={`p-3 rounded-lg bg-[var(--secondary)] text-sm space-y-1 ${r.order_id ? 'cursor-pointer hover:bg-[var(--accent)] hover:ring-1 hover:ring-[var(--primary)]/40 transition-colors' : ''}`}
+                  onClick={() => r.order_id && openOrderDetail(r.order_id)}
+                  title={r.order_id ? '클릭하여 주문 상세 보기' : undefined}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold break-words">
+                      <div className="font-semibold break-words flex items-center gap-1.5">
                         {r.invoice_number ? `#${r.invoice_number}` : `레코드 #${r.id}`}
+                        {r.order_id && <span className="text-[10px] opacity-70">🔍</span>}
                       </div>
                       <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
                         {r.invoice_date && <>발행: {r.invoice_date} · </>}
@@ -244,16 +277,16 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                   </div>
                   {/* 빠른 입금 버튼 */}
                   {onQuickPay && (
-                    <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    <div className="mt-1.5 grid grid-cols-2 gap-1" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => onQuickPay(r, Number(r.balance))}
+                        onClick={(e) => { e.stopPropagation(); onQuickPay(r, Number(r.balance)); }}
                         className="py-1.5 rounded-md bg-green-500/15 border border-green-500/40 text-green-400 text-[10px] font-bold"
                       >
                         ⚡ 잔액 전액 {fmt(r.balance)}
                       </button>
                       {onAddPayment && (
                         <button
-                          onClick={() => onAddPayment(customer, r)}
+                          onClick={(e) => { e.stopPropagation(); onAddPayment(customer, r); }}
                           className="py-1.5 rounded-md bg-[var(--secondary)] border border-[var(--border)] text-[var(--muted-foreground)] text-[10px] font-bold"
                         >
                           ✏️ 직접 입력
@@ -387,6 +420,19 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
           )}
         </div>
       </div>
+
+      {/* 주문 상세 팝업 (레코드 클릭 시) */}
+      {orderDetail && (
+        <OrderDetailPopup
+          order={orderDetail}
+          payment={records.find((r) => String(r.order_id) === String(orderDetail.id)) || null}
+          customer={customer}
+          manualInfo={manualPaid[orderDetail.id] || null}
+          onSelectMethod={(k) => setPaid(orderDetail.id, k)}
+          onClearPaid={() => clearPaid(orderDetail.id)}
+          onClose={() => setOrderDetail(null)}
+        />
+      )}
     </div>
   );
 }

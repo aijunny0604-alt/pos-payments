@@ -30,6 +30,13 @@ export const supabase = {
       return await fetchJSON(`${SUPABASE_URL}/rest/v1/orders?order=created_at.desc`, { headers });
     } catch (e) { console.error('getOrders:', e); return null; }
   },
+  async getOrderById(id) {
+    if (!id) return null;
+    try {
+      const data = await fetchJSON(`${SUPABASE_URL}/rest/v1/orders?id=eq.${encodeURIComponent(id)}&limit=1`, { headers });
+      return Array.isArray(data) ? (data[0] || null) : null;
+    } catch (e) { console.error('getOrderById:', e); return null; }
+  },
   async saveOrder(order) {
     try {
       return await fetchJSON(`${SUPABASE_URL}/rest/v1/orders`, {
