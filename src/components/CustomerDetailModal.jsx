@@ -203,15 +203,15 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
         {/* 요약 */}
         <div className="px-5 sm:px-6 pt-4">
           <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
-            <StatBox label="이월 잔금" value={fmt(outstandingTotal)} unit="원" color="red" />
-            <StatBox label="주문" value={fmt(totalOrders)} unit="건" color="blue" />
-            <StatBox label="입금 내역" value={fmt(history.length)} unit="건" color="green" />
+            <StatBox label="이월 잔금" value={outstandingTotal} unit="원" color="red" />
+            <StatBox label="주문" value={totalOrders} unit="건" color="blue" />
+            <StatBox label="입금 내역" value={history.length} unit="건" color="green" />
           </div>
           <div className="grid sm:grid-cols-2 gap-2 mt-3">
             {outstandingTotal > 0 && onBulkPay && (
               <button
                 onClick={() => onBulkPay(customer, outstandingRecords)}
-                className="py-2.5 rounded-xl bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/40 text-red-300 text-xs font-bold hover:from-red-500/30 hover:to-orange-500/30 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                className="py-2.5 rounded-xl bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/40 text-red-300 text-xs font-bold hover:from-red-500/30 hover:to-orange-500/30 hover:shadow-lg hover:-translate-y-0.5 transition-all animate-pulse-ring-red"
               >
                 💳 일괄 입금 ({fmt(outstandingTotal)}원 자동 배분)
               </button>
@@ -263,6 +263,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
         {/* 본문 */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 min-h-0 modal-body-scroll" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading && <p className="text-sm text-center text-[var(--muted-foreground)] py-6">로딩...</p>}
+          <div key={tab} className="animate-tab-in">
 
           {!loading && tab === 'outstanding' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -274,7 +275,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
                 return (
                 <div
                   key={r.id}
-                  className={`p-4 rounded-xl border bg-gradient-to-br from-[var(--secondary)] to-[var(--card)] text-sm space-y-2 animate-modal-up ${r.order_id ? 'cursor-pointer hover:border-[var(--primary)] hover:shadow-lg hover:-translate-y-0.5 transition-all' : 'border-[var(--border)]'}`}
+                  className={`p-4 rounded-xl border bg-gradient-to-br from-[var(--secondary)] to-[var(--card)] text-sm space-y-2 animate-modal-up ${idx === 0 && outstandingRecords.length >= 3 ? 'md:col-span-2' : ''} ${r.order_id ? 'cursor-pointer hover:border-[var(--primary)] hover:shadow-lg hover:-translate-y-0.5 transition-all' : 'border-[var(--border)]'}`}
                   style={{
                     borderColor: r.order_id ? 'color-mix(in srgb, var(--primary) 20%, var(--border))' : 'var(--border)',
                     animationDelay: `${Math.min(idx * 40, 400)}ms`,
@@ -486,6 +487,7 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
               )}
             </div>
           )}
+          </div>{/* animate-tab-in end */}
         </div>
       </div>
 
@@ -505,7 +507,28 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
   );
 }
 
+function useCountUp(target, duration = 700) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const t = Number(target || 0);
+    if (!isFinite(t) || t === 0) { setN(t); return; }
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.floor(t * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else setN(t);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return n;
+}
+
 function StatBox({ label, value, unit, color }) {
+  const n = useCountUp(Number(value) || 0);
   const colorMap = {
     red: {
       bg: 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(251,146,60,0.06))',
@@ -534,10 +557,10 @@ function StatBox({ label, value, unit, color }) {
     >
       <div className="text-[10px] text-[var(--muted-foreground)] break-keep font-medium uppercase tracking-wider">{label}</div>
       <div
-        className="font-black text-lg sm:text-xl lg:text-2xl break-all leading-tight mt-1"
+        className="font-black text-lg sm:text-xl lg:text-2xl break-all leading-tight mt-1 tabular-nums"
         style={{ color: c.text, textShadow: `0 0 20px ${c.text}40` }}
       >
-        {value}
+        {Number(n).toLocaleString('ko-KR')}
       </div>
       <div className="text-[10px] text-[var(--muted-foreground)] mt-0.5">{unit}</div>
     </div>
