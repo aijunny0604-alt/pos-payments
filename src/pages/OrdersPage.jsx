@@ -19,6 +19,20 @@ const DATE_FILTERS = [
   { key: 'all', label: '전체' },
 ];
 
+import useManualPaid, {
+  MANUAL_PAID_KEY as _MPK,
+  loadManualPaid as _loadMP,
+  saveManualPaid as _saveMP,
+  PAYMENT_METHODS as _PM,
+  METHOD_MAP as _MM,
+} from '@/hooks/useManualPaid';
+
+// 기존 import 호환성 유지 (CustomerDetailModal 등 외부 컴포넌트가 사용)
+export const MANUAL_PAID_KEY = _MPK;
+export const loadManualPaid = _loadMP;
+export const saveManualPaid = _saveMP;
+
+// OrdersPage 내부에서는 Icon 컴포넌트가 필요하므로 Icon 포함 로컬 버전 유지
 const PAYMENT_METHODS = [
   { key: 'card', label: '카드', emoji: '💳', Icon: CreditCard, color: '#3b82f6' },
   { key: 'cash', label: '현금', emoji: '💵', Icon: Banknote, color: '#22c55e' },
@@ -26,19 +40,6 @@ const PAYMENT_METHODS = [
   { key: 'other', label: '기타', emoji: '📝', Icon: Notebook, color: '#64748b' },
 ];
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.key, m]));
-export const MANUAL_PAID_KEY = 'pos-payments.manual-paid-orders.v1';
-
-export function loadManualPaid() {
-  try {
-    const raw = localStorage.getItem(MANUAL_PAID_KEY);
-    if (!raw) return {};
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : {};
-  } catch { return {}; }
-}
-export function saveManualPaid(obj) {
-  try { localStorage.setItem(MANUAL_PAID_KEY, JSON.stringify(obj)); } catch {}
-}
 
 export default function OrdersPage({ customers = [] }) {
   const [orders, setOrders] = useState([]);
@@ -52,23 +53,10 @@ export default function OrdersPage({ customers = [] }) {
   const [paymentFilter, setPaymentFilter] = useState('all'); // all | paid | unpaid | unsynced | manual
   const [detail, setDetail] = useState(null); // 선택 주문
   const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [manualPaid, setManualPaid] = useState(() => loadManualPaid()); // { [order_id]: { method, paidAt } }
+  // 수동 완불 — 공용 훅 사용 (storage + CustomEvent 동기화, stale state 방지)
+  const { map: manualPaid, setPaid: _setPaid, clearPaid } = useManualPaid();
   const [methodPicker, setMethodPicker] = useState(null); // 결제수단 선택창 열린 주문 id
-
-  // localStorage sync
-  useEffect(() => { saveManualPaid(manualPaid); }, [manualPaid]);
-
-  const setPaid = (id, method) => {
-    setManualPaid((prev) => ({ ...prev, [id]: { method, paidAt: new Date().toISOString() } }));
-    setMethodPicker(null);
-  };
-  const clearPaid = (id) => {
-    setManualPaid((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
+  const setPaid = (id, method) => { _setPaid(id, method); setMethodPicker(null); };
 
   const load = async () => {
     setRefreshing(true);

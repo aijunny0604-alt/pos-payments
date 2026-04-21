@@ -2,11 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { exportCustomerReport } from '@/lib/exportExcel';
 import { FileSpreadsheet, Printer, ChevronDown, ChevronUp } from 'lucide-react';
-import {
-  OrderDetailModal as OrderDetailPopup,
-  loadManualPaid,
-  saveManualPaid,
-} from '@/pages/OrdersPage';
+import { OrderDetailModal as OrderDetailPopup } from '@/pages/OrdersPage';
+import useManualPaid from '@/hooks/useManualPaid';
 
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 const dateKST = (iso) => {
@@ -24,10 +21,9 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [exporting, setExporting] = useState(false);
 
-  // 주문 상세 팝업
+  // 주문 상세 팝업 + 수동 완불 (공용 훅 사용)
   const [orderDetail, setOrderDetail] = useState(null);
-  const [manualPaid, setManualPaid] = useState(() => loadManualPaid());
-  useEffect(() => { saveManualPaid(manualPaid); }, [manualPaid]);
+  const { map: manualPaid, setPaid, clearPaid } = useManualPaid();
 
   const openOrderDetail = async (orderId) => {
     if (!orderId) return;
@@ -35,15 +31,6 @@ export default function CustomerDetailModal({ open, customer, onClose, onBulkPay
     if (existing) { setOrderDetail(existing); return; }
     const o = await supabase.getOrderById(orderId);
     if (o) setOrderDetail(o);
-  };
-
-  const setPaid = (id, method) => {
-    if (!id || !method) return;
-    setManualPaid((p) => ({ ...p, [String(id)]: { method, paidAt: new Date().toISOString() } }));
-  };
-  const clearPaid = (id) => {
-    if (!id) return;
-    setManualPaid((p) => { const n = { ...p }; delete n[String(id)]; return n; });
   };
 
   // ESC 키로 닫기
